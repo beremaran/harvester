@@ -125,30 +125,59 @@ and the live tests use so they exercise the identical path.
 
 ## Tests
 
-The whole suite runs **inside the container** against a local target server —
-no external network required. It covers cookie/storage harvesting, HTML and
-screenshot capture, an anti-bot challenge that clears via JS, request isolation,
-proxy-failure handling, and a check that stealth is genuinely active
-(`navigator.webdriver` is hidden).
+A `Makefile` wraps the container build + run so every suite is one command
+(everything runs **inside the container** — there is no host venv):
+
+```bash
+make            # list all targets
+make test       # offline suite (no network)
+make test-live  # ALL live anti-bot/fingerprint tests (needs network)
+make live-list  # list the live tests without running them
+make live-tls   # run a single live target (see keywords below)
+```
+
+### Offline suite
+
+`make test` runs the whole suite **inside the container** against a local target
+server — no external network required. It covers cookie/storage harvesting, HTML
+and screenshot capture, an anti-bot challenge that clears via JS, request
+isolation, proxy-failure handling, and a check that stealth is genuinely active
+(`navigator.webdriver` is hidden). Equivalent to:
 
 ```bash
 docker build --target test -t harvester:test .
 docker run --rm --shm-size=1g harvester:test        # runs pytest -v tests
 ```
 
-### Live stealth tests
+### Live anti-bot / fingerprint tests
 
-There is also a small suite of **live** tests (`tests/test_live_stealth.py`) that
-drive the real stealth path (`Harvester.open_stealth_page`) out to public
-fingerprinting / bot-detection sites and assert that automation is not detected —
-`navigator.webdriver`/headless-UA hidden, `window.chrome` present, non-empty
-`navigator.plugins`, a hardware (non-`SwiftShader`) WebGL renderer, consistent
-notification permissions, and a clean sweep of
-[bot.sannysoft.com](https://bot.sannysoft.com/)'s own verdicts.
+Two modules drive the **real** stealth path out to public detection sandboxes
+and assert that automation is not detected:
 
-They reach the public internet, so they are **skipped by default** — the standard
-suite above never leaves the container. Opt in with `RUN_LIVE_TESTS=1` (the
-container needs outbound network, which Docker allows by default):
+- `tests/test_live_stealth.py` — [bot.sannysoft.com](https://bot.sannysoft.com/)'s
+  own verdicts, plus the raw signals a detector reads (`navigator.webdriver` /
+  headless-UA hidden, `window.chrome` present, non-empty `navigator.plugins`, a
+  hardware non-`SwiftShader` WebGL renderer, consistent notification permissions).
+- `tests/test_live_fingerprint.py` — one target per test:
+
+  | Target | Keyword | What it checks |
+  |---|---|---|
+  | [bot.sannysoft.com](https://bot.sannysoft.com/) | `sannysoft` | headless/webdriver row verdicts |
+  | raw signals | `automation` | the fingerprint a detector reads directly |
+  | [bot-detector.rebrowser.net](https://bot-detector.rebrowser.net/) | `rebrowser` | modern Playwright-leak probes (init-script / exposeFunction / source-url leaks) |
+  | [areyouheadless](https://arh.antoinevastel.com/bots/areyouheadless) | `areyouheadless` | headless verdict text |
+  | [CreepJS](https://abrahamjuliot.github.io/creepjs/) | `creepjs` | report computes; no hard automation tells |
+  | [browserleaks WebGL](https://browserleaks.com/webgl) | `webgl` | GPU is hardware, not software (SwiftShader/llvmpipe) |
+  | [iphey.com](https://iphey.com/) | `iphey` | browser trust verdict (Trustworthy vs Suspicious) |
+  | [tls.peet.ws](https://tls.peet.ws/api/all) | `tls` | JA3/JA4/Akamai-H2 present and consistent with the Chrome UA |
+  | Cloudflare managed challenge (nowsecure.nl) | `cloudflare` | full harvest pipeline clears the interstitial and gets a `cf_clearance` cookie |
+
+Run one with `make live-<keyword>`, e.g. `make live-rebrowser` or `make live-tls`
+(maps to `pytest -m live -k <keyword>`).
+
+These reach the public internet, so they are **skipped by default** — the offline
+suite never leaves the container. `make test-live` opts in via `RUN_LIVE_TESTS=1`.
+The raw equivalent:
 
 ```bash
 docker build --target test -t harvester:test .
@@ -156,8 +185,13 @@ docker run --rm --shm-size=1g -e RUN_LIVE_TESTS=1 harvester:test \
   pytest -v -m live tests
 ```
 
-A live site being unreachable (timeout / gateway error) **skips** the test; only a
-genuine detection makes it fail.
+A live site being unreachable (timeout / gateway error) **skips** the test; a
+site whose verdict can't be located from your egress IP (async render, IP-block)
+also **skips** rather than failing on garbage. Only a *genuine detection* fails.
+Because verdict parsing on third-party pages is inherently brittle, tighten a
+given test's parsing once you've seen its real response from your own egress /
+proxy. Results depend heavily on the exit IP — run these through the same
+residential proxy you use in production for a representative signal.
 
 ## Layout
 
@@ -168,10 +202,12 @@ app/
   stealth_compat.py     Shim over playwright-stealth 1.x / 2.x + hardening loader
   stealth_hardening.js  Extra evasions injected on every page (plugins/WebGL/perms)
   models.py             Pydantic request/response schemas
-tests/                  In-container pytest suite + local target-server fixture
-  test_live_stealth.py  Opt-in live tests against public fingerprinting sites
+tests/                    In-container pytest suite + local target-server fixture
+  test_live_stealth.py    Opt-in live tests: sannysoft verdicts + raw signals
+  test_live_fingerprint.py  Opt-in live tests: one anti-bot/fingerprint target each
 Dockerfile           base (runtime) and test build targets, one image
 docker-compose.yml   Convenience runner (shm_size, port map)
+Makefile             One-command build/run/test wrappers (make, make test-live, live-<target>)
 ```
 
 ## Responsible use
