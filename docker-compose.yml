@@ -1,0 +1,13 @@
+services:
+  harvester:
+    build:
+      context: .
+      target: base
+    image: harvester:latest
+    ports:
+      - "8080:8080"
+    environment:
+      LOG_LEVEL: INFO
+    # Chromium needs a larger shared-memory segment than Docker's 64MB default.
+    shm_size: "1gb"
+    restart: unless-stopped

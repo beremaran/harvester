@@ -1,0 +1,8 @@
+# setuptools provides pkg_resources, which playwright-stealth 1.x imports at
+# load time; the Playwright base image's Python does not ship it by default.
+setuptools==75.8.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+playwright==1.49.1
+playwright-stealth==1.0.6
