@@ -13,13 +13,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 import pytest_asyncio
 
-# Keep the in-process API tests on the same secure configuration as production,
-# while allowing their loopback target server.
-os.environ.setdefault("API_KEY", "test-key")
-os.environ.setdefault("ALLOWED_HOSTS", "127.0.0.1")
-os.environ.setdefault("ALLOW_PRIVATE_NETWORKS", "true")
-os.environ.setdefault("CAPTURE_SECRET_VALUES", "true")
-
 from app.config import load_config
 from app.harvester import Harvester
 
@@ -68,19 +61,6 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):  # noqa: N802 - stdlib naming
-        if self.path.startswith("/bypass"):
-            if self.headers.get("x-harvester-bypass") != "test-secret":
-                self.send_response(403)
-                self.send_header("Server", "cloudflare")
-                self.send_header("cf-mitigated", "challenge")
-                self.end_headers()
-                self.wfile.write(b"<title>Just a moment...</title>")
-                return
-            self.send_response(200)
-            self.send_header("x-harvester-bypass", "test-secret")
-            self.end_headers()
-            self.wfile.write(b"<h1>Authorized capture</h1>")
-            return
         if self.path.startswith("/challenge"):
             self._send(_CHALLENGE_HTML, "cf_bm=challengecookie; Path=/")
         else:
@@ -107,10 +87,7 @@ def target_server():
 async def harvester():
     """One long-lived, stealth-configured browser shared across the suite —
     the same singleton pattern the API uses."""
-    h = Harvester(
-        config=load_config(),
-        enforce_security=os.environ.get("RUN_LIVE_TESTS") != "1",
-    )
+    h = Harvester(config=load_config())
     await h.start()
     try:
         yield h

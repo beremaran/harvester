@@ -59,9 +59,9 @@ class HarvestRequest(BaseModel):
         description="Include the fully rendered HTML in the response",
     )
     include_secrets: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("include_secrets", "includeSecrets"),
-        description="Request cookie/storage/header values when the operator permits it",
+        description="Deprecated compatibility field; captured values are always returned",
     )
     return_screenshot: bool = Field(
         default=False,
@@ -150,9 +150,8 @@ class HarvestResponse(BaseModel):
     request_headers: dict[str, str] = Field(default_factory=dict)
     response_headers: dict[str, str] = Field(default_factory=dict)
     scraper_headers: dict[str, str] = Field(default_factory=dict)
-    bypass: dict[str, Any] = Field(default_factory=dict)
     protection: dict[str, Any] = Field(default_factory=dict)
-    secrets_included: bool = False
+    secrets_included: bool = True
 
     challenge_detected: bool = False
     challenge_cleared: bool | None = None

@@ -2,13 +2,12 @@
 
 ## Project structure
 
-This repository contains a Python FastAPI service for authorized browser
-capture. Runtime code is in `app/`: `main.py` owns HTTP routes, authentication,
+This repository contains a Python FastAPI service for browser capture inside a
+trusted compose network. Runtime code is in `app/`: `main.py` owns HTTP routes,
 limits, and lifecycle; `harvester.py` owns Playwright and stealth browser
-lifecycle, interception, state capture, and redaction; `config.py`,
-`security.py`, and `detection.py` provide configuration, URL/network validation,
-and WAF marker detection. Tests are in `tests/`, and `docs/` contains scraper
-integration guidance.
+lifecycle, interception, and state capture; `config.py` provides runtime
+configuration and `detection.py` provides WAF marker detection. Tests are in
+`tests/`, and `docs/` contains scraper integration guidance.
 
 ## Development
 
@@ -27,19 +26,16 @@ Use modern Python, four-space indentation, type hints, small named functions,
 and explicit validation at security boundaries. Keep API behavior and
 configuration documented in `README.md`.
 
-## Security
+## Deployment boundary
 
-This is an internal authorized-testing component. Preserve API-key
-authentication, the hostname allowlist, DNS/private-network checks, redirect
-and subresource re-validation, and secret redaction. Keep
-`ALLOW_PRIVATE_NETWORKS`, `CAPTURE_SECRET_VALUES`,
-`ALLOW_INSECURE_BYPASS_HEADERS`, and `ALLOW_CALLER_HEADERS` disabled unless an
-isolated test setup requires them. Never commit API keys, bypass-header values,
-or captured secrets.
+This container is intended to be reachable only from its surrounding compose
+network. It intentionally does not authenticate callers, restrict target
+hosts, or redact captured values. Do not expose it directly to an untrusted
+network without adding an appropriate boundary outside the service.
 
 ## Changes and tests
 
-Add regression coverage for URL validation, request interception, redaction,
-configuration, protection detection, or API contract changes. Keep commits
-focused with concise imperative subjects and describe security implications and
-verification in pull requests.
+Add regression coverage for request interception, configuration, protection
+detection, or API contract changes. Keep commits focused with concise
+imperative subjects and describe operational implications and verification in
+pull requests.

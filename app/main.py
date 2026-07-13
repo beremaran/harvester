@@ -1,4 +1,4 @@
-"""FastAPI service exposing the authenticated stealth capture API."""
+"""FastAPI service exposing the stealth capture API."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .config import Config, load_config, validate_config
+from .config import Config, load_config
 from .harvester import Harvester
 from .models import HarvestRequest, HarvestResponse
 
@@ -21,14 +21,13 @@ logging.basicConfig(
 logger = logging.getLogger("harvester.api")
 
 config: Config = load_config()
-harvester = Harvester(config=config, enforce_security=True)
+harvester = Harvester(config=config)
 _active = 0
 _active_lock = asyncio.Lock()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    validate_config(config)
     await harvester.start()
     try:
         yield
@@ -37,11 +36,11 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Stealth Authorized Browser Capture API",
+    title="Stealth Browser Capture API",
     description=(
-        "Load an allowlisted URL through a stealth Playwright browser, wait for "
-        "authorized anti-bot challenges, and return redacted browser state, "
-        "scraper headers, and protection metadata."
+        "Load a URL through a stealth Playwright browser, wait for anti-bot "
+        "challenges, and return browser state, scraper headers, and protection "
+        "metadata."
     ),
     version="2.0.0",
     lifespan=lifespan,
@@ -59,10 +58,6 @@ async def request_size_limit(request: Request, call_next: Any):
         if too_large:
             return JSONResponse(status_code=413, content={"error": "request body too large"})
     return await call_next(request)
-
-
-def _authorized(request: Request) -> bool:
-    return bool(config.api_key) and request.headers.get("authorization") == f"Bearer {config.api_key}"
 
 
 async def _reserve_capacity() -> bool:
@@ -95,7 +90,6 @@ def _capture_payload(result: HarvestResponse) -> dict[str, Any]:
         "requestHeaders": result.request_headers,
         "responseHeaders": result.response_headers,
         "scraperHeaders": result.scraper_headers,
-        "bypass": result.bypass,
         "protection": result.protection,
         "secretsIncluded": result.secrets_included,
         "ok": result.ok,
@@ -109,9 +103,7 @@ def _capture_payload(result: HarvestResponse) -> dict[str, Any]:
     return payload
 
 
-async def _run_harvest(request: Request, req: HarvestRequest, *, capture_style: bool):
-    if not _authorized(request):
-        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+async def _run_harvest(req: HarvestRequest, *, capture_style: bool):
     if not await _reserve_capacity():
         return JSONResponse(status_code=429, content={"error": "capacity exceeded"})
     try:
@@ -138,10 +130,10 @@ async def health() -> dict[str, object]:
 
 
 @app.post("/harvest", response_model=HarvestResponse)
-async def harvest(request: Request, req: HarvestRequest):
-    return await _run_harvest(request, req, capture_style=False)
+async def harvest(req: HarvestRequest):
+    return await _run_harvest(req, capture_style=False)
 
 
 @app.post("/v1/capture")
-async def capture(request: Request, req: HarvestRequest):
-    return await _run_harvest(request, req, capture_style=True)
+async def capture(req: HarvestRequest):
+    return await _run_harvest(req, capture_style=True)
