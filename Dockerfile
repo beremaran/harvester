@@ -4,7 +4,8 @@ FROM mcr.microsoft.com/playwright/python:v1.49.1-noble AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8080
 
 WORKDIR /srv
 
@@ -16,7 +17,7 @@ COPY app ./app
 EXPOSE 8080
 
 # Runtime default: serve the API.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8080}\""]
 
 # ---------------------------------------------------------------------------
 # Test stage: adds dev deps + tests. Build with `--target test` to run them.

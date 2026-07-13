@@ -1,5 +1,4 @@
-"""Core browser-driving logic: load a URL through a proxy with stealth,
-let anti-bot challenges resolve, and harvest cookies + storage."""
+"""Stealth browser capture with the service security and scraper contract."""
 from __future__ import annotations
 
 import asyncio
@@ -8,37 +7,39 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
+from urllib.parse import urlsplit
 
 from playwright.async_api import (
     Browser,
     BrowserContext,
     Page,
+    Response,
     TimeoutError as PWTimeoutError,
     async_playwright,
 )
 
+from .config import Config, load_config
+from .detection import detect_protection
 from .models import HarvestRequest, HarvestResponse
+from .security import assert_safe_url
 from .stealth_compat import apply_stealth, stealth_context_kwargs
 
 logger = logging.getLogger("harvester")
 
-# Signatures of common anti-bot interstitials. If the page still matches one of
-# these after navigation, we keep polling until challenge_wait_ms elapses.
 _CHALLENGE_MARKERS = [
-    "just a moment",           # Cloudflare
-    "checking your browser",   # Cloudflare / DDoS-Guard
-    "verifying you are human",  # Cloudflare Turnstile
-    "enable javascript and cookies to continue",  # Cloudflare
-    "attention required",      # Cloudflare block
+    "just a moment",
+    "checking your browser",
+    "verifying you are human",
+    "enable javascript and cookies to continue",
+    "attention required",
     "ddos-guard",
     "please wait while we verify",
     "one more step",
-    "verification is taking",  # generic
-    "__cf_chl",                # Cloudflare challenge script marker
+    "verification is taking",
+    "__cf_chl",
     "/cdn-cgi/challenge-platform",
 ]
 
-# Launch args that reduce automation fingerprints and work in a container.
 _LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -55,6 +56,64 @@ _DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
+_SCRAPER_HEADER_NAMES = (
+    "accept",
+    "accept-language",
+    "cache-control",
+    "pragma",
+    "referer",
+    "user-agent",
+)
+
+
+def _redact(value: Any, expose: bool) -> str:
+    return str(value) if expose else "[REDACTED]"
+
+
+def _bypass_header_names(config: Config) -> set[str]:
+    return {
+        name.lower()
+        for headers in (config.bypass_headers_by_host or {}).values()
+        for name in headers
+    }
+
+
+def _redact_request_headers(headers: dict[str, Any], include_secrets: bool, config: Config) -> dict[str, str]:
+    bypass_headers = _bypass_header_names(config)
+    sensitive = {"authorization", "proxy-authorization", "cookie"}
+    result: dict[str, str] = {}
+    for name, value in (headers or {}).items():
+        normalized = str(name).lower()
+        if normalized in bypass_headers:
+            result[normalized] = "[REDACTED]"
+        elif normalized in sensitive:
+            result[normalized] = _redact(value, include_secrets)
+        else:
+            result[normalized] = str(value)
+    return result
+
+
+def _redact_response_headers(headers: dict[str, Any], config: Config) -> dict[str, str]:
+    bypass_headers = _bypass_header_names(config)
+    return {
+        str(name).lower(): str(value)
+        for name, value in (headers or {}).items()
+        if str(name).lower() != "set-cookie" and str(name).lower() not in bypass_headers
+    }
+
+
+def _build_scraper_headers(
+    request_headers: dict[str, Any], cookie_header: str, include_secrets: bool
+) -> dict[str, str]:
+    normalized = {str(name).lower(): str(value) for name, value in (request_headers or {}).items()}
+    result = {name: normalized[name] for name in _SCRAPER_HEADER_NAMES if name in normalized}
+    if include_secrets and cookie_header:
+        result["cookie"] = cookie_header
+    return result
+
+
+def _redacted_storage(values: dict[str, str], include_secrets: bool) -> dict[str, str]:
+    return {str(key): _redact(value, include_secrets) for key, value in values.items()}
 
 
 def _looks_like_challenge(html: str, title: str) -> bool:
@@ -63,34 +122,35 @@ def _looks_like_challenge(html: str, title: str) -> bool:
 
 
 async def _read_storage(page: Page, kind: str) -> dict[str, str]:
-    """Read localStorage or sessionStorage as a plain dict, tolerating failures
-    (e.g. SecurityError on an opaque origin)."""
     js = f"""() => {{
         try {{
             const out = {{}};
             const s = window.{kind};
             for (let i = 0; i < s.length; i++) {{
                 const k = s.key(i);
-                out[k] = s.getItem(k);
+                if (k !== null) out[k] = s.getItem(k);
             }}
             return out;
         }} catch (e) {{ return {{}}; }}
     }}"""
     try:
         return await page.evaluate(js)
-    except Exception as exc:  # noqa: BLE001 - storage access is best-effort
+    except Exception as exc:  # noqa: BLE001 - storage is best effort
         logger.debug("failed to read %s: %s", kind, exc)
         return {}
 
 
 class Harvester:
-    """Owns a long-lived browser instance shared across requests.
+    """Long-lived stealth browser with an isolated context per request.
 
-    A fresh, isolated context is created per harvest so cookies/storage never
-    leak between requests, but the browser process is reused for speed.
+    ``enforce_security`` is enabled by the HTTP service. Direct callers such as
+    the opt-in fingerprint tests can use the browser driver without an operator
+    allowlist while still exercising the exact stealth path.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: Config | None = None, *, enforce_security: bool = False) -> None:
+        self.config = config or load_config()
+        self.enforce_security = enforce_security
         self._pw = None
         self._browser: Browser | None = None
         self._lock = asyncio.Lock()
@@ -102,10 +162,7 @@ class Harvester:
             if self._browser is not None:
                 return
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(
-                headless=True,
-                args=_LAUNCH_ARGS,
-            )
+            self._browser = await self._pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
             logger.info("browser launched")
 
     async def stop(self) -> None:
@@ -121,8 +178,6 @@ class Harvester:
         return self._browser is not None and self._browser.is_connected()
 
     def _context_kwargs(self, req: HarvestRequest) -> dict[str, Any]:
-        """Build the new_context kwargs — UA, viewport, proxy, and the stealth
-        version's own context hooks — that every harvest (and live test) uses."""
         context_kwargs: dict[str, Any] = {
             "locale": req.locale,
             "viewport": {"width": req.viewport_width, "height": req.viewport_height},
@@ -135,20 +190,49 @@ class Harvester:
         if req.proxy is not None:
             context_kwargs["proxy"] = req.proxy.to_playwright()
         if req.extra_headers:
+            if not self.config.allow_caller_headers:
+                raise ValueError("caller-supplied extra_headers are disabled")
             context_kwargs["extra_http_headers"] = req.extra_headers
         context_kwargs.update(stealth_context_kwargs())
         return context_kwargs
 
-    @asynccontextmanager
-    async def open_stealth_page(
-        self, req: HarvestRequest
-    ) -> AsyncIterator[tuple[BrowserContext, Page]]:
-        """Yield a fresh, isolated context + a stealthed page configured exactly
-        as ``harvest`` configures them. The context is closed on exit.
+    async def _install_request_guards(self, page: Page, state: dict[str, Any]) -> None:
+        async def handle(route: Any) -> None:
+            request = route.request
+            try:
+                parsed = urlsplit(request.url)
+                if parsed.scheme not in {"http", "https"}:
+                    await route.continue_()
+                    return
+                if self.enforce_security:
+                    await assert_safe_url(request.url, self.config)
+                headers = await request.all_headers()
+                try:
+                    main_frame_navigation = request.is_navigation_request() and request.frame == page.main_frame
+                except Exception:  # noqa: BLE001 - detached frames can disappear during redirects
+                    main_frame_navigation = False
 
-        Exposed so tests can drive the real stealth path (same launch flags, UA,
-        and evasions) against live sites and inspect the resulting page directly.
-        """
+                bypass = (self.config.bypass_headers_by_host or {}).get(
+                    (parsed.hostname or "").lower().removesuffix(".")
+                )
+                if bypass and (parsed.scheme == "https" or self.config.allow_insecure_bypass_headers):
+                    state["bypass_applied"] = True
+                    headers.update(bypass)
+                    await route.continue_(headers=headers)
+                else:
+                    if bypass:
+                        state["insecure_bypass_blocked"] = True
+                    await route.continue_()
+                if main_frame_navigation:
+                    state["latest_request_headers"] = dict(headers)
+            except Exception as exc:  # noqa: BLE001 - security boundary failures abort the request
+                logger.debug("aborting browser request %s: %s", request.url, exc)
+                await route.abort("blockedbyclient")
+
+        await page.route("**/*", handle)
+
+    @asynccontextmanager
+    async def open_stealth_page(self, req: HarvestRequest) -> AsyncIterator[tuple[BrowserContext, Page]]:
         if self._browser is None:
             await self.start()
         assert self._browser is not None
@@ -164,23 +248,46 @@ class Harvester:
     async def harvest(self, req: HarvestRequest) -> HarvestResponse:
         started = time.monotonic()
         resp = HarvestResponse(ok=False, url=req.url)
+        include_secrets = req.include_secrets and self.config.capture_secret_values
+        state: dict[str, Any] = {
+            "latest_request_headers": {},
+            "latest_navigation_response": None,
+            "bypass_applied": False,
+            "insecure_bypass_blocked": False,
+        }
 
         try:
+            target = await assert_safe_url(
+                req.url,
+                self.config,
+                enforce_boundary=self.enforce_security,
+            )
             async with self.open_stealth_page(req) as (context, page):
-                nav_response = None
+                if self.enforce_security:
+                    await self._install_request_guards(page, state)
+
+                def remember_response(candidate: Response) -> None:
+                    try:
+                        request = candidate.request
+                        if request.is_navigation_request() and request.frame == page.main_frame:
+                            state["latest_navigation_response"] = candidate
+                    except Exception:  # noqa: BLE001 - response may outlive its frame
+                        return
+
+                page.on("response", remember_response)
+                nav_response: Response | None = None
                 try:
                     nav_response = await page.goto(
-                        req.url, wait_until=req.wait_until, timeout=req.timeout_ms
+                        target,
+                        wait_until=req.wait_until,
+                        timeout=req.timeout_ms or self.config.navigation_timeout_ms,
                     )
                 except PWTimeoutError:
-                    # networkidle can legitimately never fire on chatty pages; fall
-                    # back to whatever has loaded rather than failing outright.
                     logger.warning("navigation wait '%s' timed out; continuing", req.wait_until)
 
                 if nav_response is not None:
                     resp.status = nav_response.status
 
-                # Detect and wait out an anti-bot challenge.
                 await self._await_challenge(page, req, resp)
 
                 if req.wait_for_selector:
@@ -189,54 +296,98 @@ class Harvester:
                     except PWTimeoutError:
                         logger.warning("wait_for_selector '%s' timed out", req.wait_for_selector)
 
-                if req.extra_wait_ms:
-                    await page.wait_for_timeout(req.extra_wait_ms)
+                extra_wait_ms = req.wait_for_ms if req.wait_for_ms is not None else req.extra_wait_ms
+                if extra_wait_ms:
+                    await page.wait_for_timeout(extra_wait_ms)
 
-                # Harvest everything.
                 resp.final_url = page.url
                 try:
                     resp.title = await page.title()
                 except Exception:  # noqa: BLE001
                     resp.title = None
 
-                resp.cookies = await context.cookies()
-                resp.local_storage = await _read_storage(page, "localStorage")
-                resp.session_storage = await _read_storage(page, "sessionStorage")
+                raw_cookies = await context.cookies()
+                resp.cookies = [
+                    {**cookie, "value": _redact(cookie.get("value", ""), include_secrets)}
+                    for cookie in raw_cookies
+                ]
+                local_storage = await _read_storage(page, "localStorage")
+                session_storage = await _read_storage(page, "sessionStorage")
+                resp.local_storage = _redacted_storage(local_storage, include_secrets)
+                resp.session_storage = _redacted_storage(session_storage, include_secrets)
+
+                detection_html = ""
+                try:
+                    detection_html = await page.evaluate(
+                        "() => document.documentElement?.outerHTML.slice(0, 250000) ?? ''"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("failed to read detection HTML: %s", exc)
+
+                final_response = state["latest_navigation_response"] or nav_response
+                if final_response is not None:
+                    resp.final_status = final_response.status
+                    try:
+                        raw_response_headers = await final_response.all_headers()
+                    except Exception:  # noqa: BLE001
+                        raw_response_headers = {}
+                else:
+                    raw_response_headers = {}
+
+                cookie_header = ""
+                if include_secrets and resp.final_url and urlsplit(resp.final_url).scheme in {"http", "https"}:
+                    page_cookies = await context.cookies([resp.final_url])
+                    cookie_header = "; ".join(
+                        f"{cookie['name']}={cookie['value']}" for cookie in page_cookies
+                    )
+
+                resp.request_headers = _redact_request_headers(
+                    state["latest_request_headers"], include_secrets, self.config
+                )
+                resp.response_headers = _redact_response_headers(raw_response_headers, self.config)
+                resp.scraper_headers = _build_scraper_headers(
+                    state["latest_request_headers"], cookie_header, include_secrets
+                )
+                host = (urlsplit(target).hostname or "").lower().removesuffix(".")
+                resp.bypass = {
+                    "configured": host in (self.config.bypass_headers_by_host or {}),
+                    "applied": state["bypass_applied"],
+                    "insecureTransportBlocked": state["insecure_bypass_blocked"],
+                }
+                resp.protection = detect_protection(
+                    status=resp.final_status,
+                    headers=raw_response_headers,
+                    cookies=raw_cookies,
+                    html=detection_html,
+                )
+                resp.secrets_included = include_secrets
 
                 if req.return_html:
-                    try:
-                        resp.html = await page.content()
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("failed to capture html: %s", exc)
-
+                    html = await page.content()
+                    if len(html.encode("utf-8")) > self.config.max_html_bytes:
+                        raise ValueError("rendered HTML exceeds MAX_HTML_BYTES")
+                    resp.html = html
                 if req.return_screenshot:
-                    try:
-                        png = await page.screenshot(full_page=False)
-                        resp.screenshot_b64 = base64.b64encode(png).decode("ascii")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("failed to capture screenshot: %s", exc)
+                    png = await page.screenshot(full_page=False)
+                    resp.screenshot_b64 = base64.b64encode(png).decode("ascii")
 
                 resp.ok = True
-        except Exception as exc:  # noqa: BLE001 - surface any failure to the caller
+        except Exception as exc:  # noqa: BLE001 - surface capture failures as structured JSON
             logger.exception("harvest failed for %s", req.url)
             resp.ok = False
             resp.error = f"{type(exc).__name__}: {exc}"
         finally:
             resp.elapsed_ms = int((time.monotonic() - started) * 1000)
-
         return resp
 
-    async def _await_challenge(
-        self, page: Page, req: HarvestRequest, resp: HarvestResponse
-    ) -> None:
-        """Poll the page for a known interstitial and wait for it to clear."""
+    async def _await_challenge(self, page: Page, req: HarvestRequest, resp: HarvestResponse) -> None:
         deadline = time.monotonic() + (req.challenge_wait_ms / 1000.0)
         detected = False
         while True:
             try:
                 html = await page.content()
                 title = await page.title()
-            except Exception:  # noqa: BLE001 - navigation in flight
+            except Exception:  # noqa: BLE001 - navigation may still be in flight
                 await page.wait_for_timeout(500)
                 if time.monotonic() >= deadline:
                     break
@@ -252,7 +403,6 @@ class Harvester:
             if time.monotonic() >= deadline:
                 resp.challenge_cleared = False
                 break
-            # Give the challenge JS room to run and settle.
             await page.wait_for_timeout(1000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=3000)

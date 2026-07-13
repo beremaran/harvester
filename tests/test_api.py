@@ -16,7 +16,11 @@ async def client():
     # Drive the shared harvester singleton the app uses.
     await main.harvester.start()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer test-key"},
+    ) as c:
         try:
             yield c
         finally:
@@ -40,7 +44,9 @@ async def test_harvest_endpoint(client, target_server):
     assert body["ok"] is True
     names = {c["name"] for c in body["cookies"]}
     assert "session_id" in names
-    assert body["local_storage"]["flag"] == "harvested"
+    assert body["local_storage"]["flag"] == "[REDACTED]"
+    assert body["scraper_headers"]["user-agent"].startswith("Mozilla/")
+    assert "set-cookie" not in body["response_headers"]
     assert body["html"]
 
 
@@ -63,3 +69,22 @@ async def test_harvest_failure_returns_502(client, target_server):
     assert r.status_code == 502
     assert r.json()["ok"] is False
     assert r.json()["error"]
+
+
+async def test_capture_compatibility_contract_returns_secrets_when_enabled(client, target_server):
+    r = await client.post(
+        "/v1/capture",
+        json={"url": target_server, "includeHtml": True, "includeSecrets": True},
+        timeout=60,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["finalStatus"] == 200
+    assert body["storage"]["localStorage"]["token"] == "abc123"
+    assert body["scraperHeaders"]["cookie"].startswith("session_id=")
+
+
+async def test_authentication_is_required(client, target_server):
+    del client.headers["Authorization"]
+    r = await client.post("/harvest", json={"url": target_server})
+    assert r.status_code == 401

@@ -1,221 +1,159 @@
-# Cookie / Session Harvester
+# Stealth Authorized Browser Capture API
 
-A single Docker container exposing an HTTP API that loads a target URL through a
-supplied proxy using **Chromium + [`playwright-stealth`]**, waits out anti-bot
-challenges (Cloudflare "Just a moment…", DDoS-Guard, Turnstile interstitials),
-and returns the **cookies, localStorage, and sessionStorage** the site set —
-plus, optionally, the fully rendered HTML and a screenshot.
+An internal HTTP service that loads authorized targets through a real Chromium
+browser with `playwright-stealth`, waits for known anti-bot challenges, and
+returns browser state plus ready-to-use scraper metadata.
 
-The browser process is launched once and reused; every request runs in a fresh,
-isolated browser context so nothing leaks between requests.
+Use it only against targets you own or are authorized to test. The service is a
+capture primitive, not a general scraping framework or a permission to bypass a
+site's controls.
 
-[`playwright-stealth`]: https://pypi.org/project/playwright-stealth/
+## What it provides
 
-## Build & run
+- Stealth Chromium with a fresh isolated context for every request.
+- Optional proxy, locale, timezone, viewport, HTML, screenshot, selector wait,
+  and challenge wait controls.
+- API-key authentication and an operator-controlled hostname allowlist.
+- DNS/private-network checks and re-validation of redirects and subresources.
+- Redacted cookies, localStorage, sessionStorage, request headers, response
+  headers, and common browser `scraper_headers` by default.
+- Explicit dual opt-in for secret values: the request must ask for them and the
+  operator must enable `CAPTURE_SECRET_VALUES=true`.
+- Exact-host owner-managed WAF bypass headers, restricted to safe custom `x-*`
+  headers and HTTPS by default.
+- Protection evidence for Cloudflare, Imperva, Akamai, DataDome,
+  HUMAN/PerimeterX, Sucuri, AWS WAF, and Kasada.
+
+Stealth and challenge waiting are retained from the Python implementation. The
+WAF header mechanism is for an exception configured by the target owner; it is
+not a generic anti-bot bypass or CAPTCHA solver.
+
+## Build and run
 
 ```bash
-# Build the runtime image
-docker build --target base -t harvester:latest .
+export API_KEY="$(openssl rand -hex 32)"
+export ALLOWED_HOSTS="example.com,*.example.com"
 
-# Run the API (Chromium needs a larger /dev/shm than Docker's 64MB default)
-docker run --rm --shm-size=1g -p 8080:8080 harvester:latest
+docker compose -f docker-compose.yml up --build
 ```
 
-Or with compose:
-
-```bash
-docker compose up --build
-```
+The API listens on `http://localhost:8080`. Chromium needs a larger shared
+memory segment; Compose configures `1gb`.
 
 ## API
 
-### `GET /health`
-Returns `{"status": "ok", "browser_connected": true}` once the browser is up.
+### `GET /health` or `GET /healthz`
+
+Health is unauthenticated:
+
+```json
+{"status":"ok","browser_connected":true,"ok":true}
+```
 
 ### `POST /harvest`
 
-Request body (only `url` is required):
+This is the native Python API. It requires `Authorization: Bearer <API_KEY>`.
 
-```jsonc
+```json
 {
-  "url": "https://target.example.com",        // required, http(s)
-  "proxy": {                                   // optional
-    "server": "http://proxy-host:8000",        // http|https|socks5|socks4
-    "username": "user",                         // optional
-    "password": "pass",                         // optional
-    "bypass": "localhost,127.0.0.1"             // optional
+  "url": "https://example.com/",
+  "proxy": {
+    "server": "http://proxy.internal:8080",
+    "username": "proxy-user",
+    "password": "proxy-password"
   },
-
-  "return_html": false,                          // include rendered HTML
-  "return_screenshot": false,                    // include base64 PNG
-
-  "wait_until": "networkidle",                   // load|domcontentloaded|networkidle|commit
-  "timeout_ms": 45000,                           // navigation timeout
-  "wait_for_selector": "#logged-in",            // optional: wait for a selector post-challenge
-  "extra_wait_ms": 0,                            // extra idle wait after load
-  "challenge_wait_ms": 15000,                     // max time to wait for an interstitial to clear
-
-  "user_agent": null,                            // override UA
-  "locale": "en-US",
-  "timezone_id": "America/New_York",            // optional
-  "viewport_width": 1920,
-  "viewport_height": 1080,
-  "extra_headers": { "X-Foo": "bar" }           // optional
+  "return_html": true,
+  "include_secrets": false,
+  "challenge_wait_ms": 15000,
+  "wait_for_selector": "#logged-in"
 }
 ```
 
-Response:
+The response includes `final_url`, `status`, `final_status`, `cookies`,
+`local_storage`, `session_storage`, `request_headers`, `response_headers`,
+`scraper_headers`, `bypass`, `protection`, and optional `html` and
+`screenshot_b64`.
 
-```jsonc
-{
-  "ok": true,
-  "url": "https://target.example.com",
-  "final_url": "https://target.example.com/",
-  "status": 200,
-  "title": "…",
-  "cookies": [ { "name": "...", "value": "...", "domain": "...", "path": "/", "httpOnly": true, ... } ],
-  "local_storage": { "token": "…" },
-  "session_storage": { "sid": "…" },
-  "challenge_detected": false,
-  "challenge_cleared": null,        // true/false when a challenge was seen
-  "html": null,                     // present when return_html=true
-  "screenshot_b64": null,           // present when return_screenshot=true
-  "elapsed_ms": 1234,
-  "error": null
-}
-```
+### `POST /v1/capture`
 
-On a harvest failure the endpoint returns HTTP **502** with the same body shape
-(`ok: false`, `error` populated). Validation errors return **422**.
+This compatibility endpoint preserves the original Node scraper contract. It
+accepts both Python snake_case and the original camelCase request names such as
+`includeHtml`, `includeSecrets`, and `waitForMs`, and returns `finalUrl`,
+`finalStatus`, `storage`, `requestHeaders`, `responseHeaders`,
+`scraperHeaders`, `protection`, and `secretsIncluded`.
 
-### Example
+Example:
 
 ```bash
-curl -s http://localhost:8080/harvest \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "url": "https://example.com",
-        "proxy": {"server": "http://user:pass@proxy:8000"},
-        "return_html": true
-      }' | jq '{ok, status, cookies: (.cookies|length), keys: (.local_storage|keys)}'
+curl -sS http://localhost:8080/v1/capture \
+  -H "Authorization: Bearer $API_KEY" \
+  -H 'content-type: application/json' \
+  --data '{"url":"https://example.com/","includeHtml":true}' \
+  | jq '{finalUrl, finalStatus, scraperHeaders, protection}'
 ```
 
-## How challenges are handled
+`scraperHeaders` is intentionally a small replay-oriented set: `accept`,
+`accept-language`, `cache-control`, `pragma`, `referer`, and `user-agent`.
+`cookie` appears only when secrets are actually enabled. It is not a guarantee
+that a non-browser HTTP client can reproduce the browser request.
 
-After navigation the page is polled for known interstitial signatures
-(Cloudflare `__cf_chl` / "just a moment", DDoS-Guard, generic "checking your
-browser", etc.). While one is present, the harvester lets the challenge JS run
-and settle, retrying until `challenge_wait_ms` elapses. `challenge_detected` and
-`challenge_cleared` report what happened. For tougher targets, combine a
-residential proxy with `wait_for_selector` (an element that only exists past the
-wall) and a generous `challenge_wait_ms`.
+Capture failures return HTTP `502`; invalid request bodies return `422`,
+unauthorized requests return `401`, oversized bodies return `413`, and capacity
+limits return `429`.
 
-Stealth (via `playwright-stealth`) plus a set of automation-hiding launch flags
-(`--disable-blink-features=AutomationControlled`, a realistic User-Agent,
-`navigator.webdriver` patched, etc.) reduce the fingerprints that trip these
-systems in the first place.
+## Configuration
 
-On top of `playwright-stealth`, `app/stealth_hardening.js` is injected into every
-page to cover surfaces the library leaves exposed on modern Chromium: it
-populates `navigator.plugins`/`mimeTypes` (empty under headless), spoofs the WebGL
-vendor/renderer away from the tell-tale `SwiftShader` software renderer, and makes
-`Notification.permission` consistent with `permissions.query`. The exact stealth
-context/page setup lives in `Harvester.open_stealth_page`, which both `harvest`
-and the live tests use so they exercise the identical path.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `API_KEY` | none | Required bearer token for capture endpoints. |
+| `ALLOWED_HOSTS` | none | Comma-separated exact hosts and/or `*.example.com` patterns. |
+| `ALLOW_PRIVATE_NETWORKS` | `false` | Permit loopback, private, link-local, multicast, and reserved DNS results. Keep disabled normally. |
+| `CAPTURE_SECRET_VALUES` | `false` | Allow requests with `include_secrets`/`includeSecrets` to return values. |
+| `MAX_CONCURRENCY` | `2` | Maximum simultaneous captures. |
+| `NAVIGATION_TIMEOUT_MS` | `45000` | Default navigation timeout. |
+| `MAX_HTML_BYTES` | `2000000` | Maximum returned rendered HTML size. |
+| `MAX_BODY_BYTES` | `65536` | Maximum capture request body size. |
+| `BYPASS_HEADERS_JSON` | empty | Exact-host JSON map of owner-managed safe `x-*` WAF exception headers. |
+| `ALLOW_INSECURE_BYPASS_HEADERS` | `false` | Permit bypass headers over HTTP; use only in isolated tests. |
+| `ALLOW_CALLER_HEADERS` | `false` | Opt in to request-supplied `extra_headers`; disabled by default at the security boundary. |
+| `PORT` | `8080` | HTTP listen port. |
+
+Example WAF configuration:
+
+```bash
+export BYPASS_HEADERS_JSON='{"example.com":{"x-harvester-bypass":"owner-managed-secret"}}'
+```
+
+Bypass hostnames must be covered by `ALLOWED_HOSTS`. Values are never returned;
+request headers redact them, response headers omit them, and `scraper_headers`
+does not include them.
 
 ## Tests
 
-A `Makefile` wraps the container build + run so every suite is one command
-(everything runs **inside the container** — there is no host venv):
+The supported workflow runs the pinned Playwright environment in Docker:
 
 ```bash
-make            # list all targets
-make test       # offline suite (no network)
-make test-live  # ALL live anti-bot/fingerprint tests (needs network)
-make live-list  # list the live tests without running them
-make live-tls   # run a single live target (see keywords below)
+make test            # offline suite
+make test-live       # opt-in public fingerprint/anti-bot suite
+make live-rebrowser  # one live target
+make live-list       # list live tests
 ```
 
-### Offline suite
-
-`make test` runs the whole suite **inside the container** against a local target
-server — no external network required. It covers cookie/storage harvesting, HTML
-and screenshot capture, an anti-bot challenge that clears via JS, request
-isolation, proxy-failure handling, and a check that stealth is genuinely active
-(`navigator.webdriver` is hidden). Equivalent to:
-
-```bash
-docker build --target test -t harvester:test .
-docker run --rm --shm-size=1g harvester:test        # runs pytest -v tests
-```
-
-### Live anti-bot / fingerprint tests
-
-Two modules drive the **real** stealth path out to public detection sandboxes
-and assert that automation is not detected:
-
-- `tests/test_live_stealth.py` — [bot.sannysoft.com](https://bot.sannysoft.com/)'s
-  own verdicts, plus the raw signals a detector reads (`navigator.webdriver` /
-  headless-UA hidden, `window.chrome` present, non-empty `navigator.plugins`, a
-  hardware non-`SwiftShader` WebGL renderer, consistent notification permissions).
-- `tests/test_live_fingerprint.py` — one target per test:
-
-  | Target | Keyword | What it checks |
-  |---|---|---|
-  | [bot.sannysoft.com](https://bot.sannysoft.com/) | `sannysoft` | headless/webdriver row verdicts |
-  | raw signals | `automation` | the fingerprint a detector reads directly |
-  | [bot-detector.rebrowser.net](https://bot-detector.rebrowser.net/) | `rebrowser` | modern Playwright-leak probes (init-script / exposeFunction / source-url leaks) |
-  | [areyouheadless](https://arh.antoinevastel.com/bots/areyouheadless) | `areyouheadless` | headless verdict text |
-  | [CreepJS](https://abrahamjuliot.github.io/creepjs/) | `creepjs` | report computes; no hard automation tells |
-  | [browserleaks WebGL](https://browserleaks.com/webgl) | `webgl` | GPU is hardware, not software (SwiftShader/llvmpipe) |
-  | [iphey.com](https://iphey.com/) | `iphey` | browser trust verdict (Trustworthy vs Suspicious) |
-  | [tls.peet.ws](https://tls.peet.ws/api/all) | `tls` | JA3/JA4/Akamai-H2 present and consistent with the Chrome UA |
-  | Cloudflare managed challenge (nowsecure.nl) | `cloudflare` | full harvest pipeline clears the interstitial and gets a `cf_clearance` cookie |
-
-Run one with `make live-<keyword>`, e.g. `make live-rebrowser` or `make live-tls`
-(maps to `pytest -m live -k <keyword>`).
-
-These reach the public internet, so they are **skipped by default** — the offline
-suite never leaves the container. `make test-live` opts in via `RUN_LIVE_TESTS=1`.
-The raw equivalent:
-
-```bash
-docker build --target test -t harvester:test .
-docker run --rm --shm-size=1g -e RUN_LIVE_TESTS=1 harvester:test \
-  pytest -v -m live tests
-```
-
-A live site being unreachable (timeout / gateway error) **skips** the test; a
-site whose verdict can't be located from your egress IP (async render, IP-block)
-also **skips** rather than failing on garbage. Only a *genuine detection* fails.
-Because verdict parsing on third-party pages is inherently brittle, tighten a
-given test's parsing once you've seen its real response from your own egress /
-proxy. Results depend heavily on the exit IP — run these through the same
-residential proxy you use in production for a representative signal.
+The offline suite covers cookies/storage, HTML and screenshots, challenge
+waiting, isolation, proxy failures, stealth activation, authentication,
+redaction, WAF bypass behavior, header capture, URL/DNS security, and provider
+detection. Live tests are skipped unless `RUN_LIVE_TESTS=1`.
 
 ## Layout
 
+```text
+app/main.py              FastAPI routes, auth, limits, lifecycle
+app/harvester.py         Stealth browser, interception, capture, redaction
+app/config.py            Environment configuration and bypass validation
+app/security.py          URL, DNS, private-network, and proxy validation
+app/detection.py         WAF/anti-bot marker detection
+app/models.py            Pydantic request/response schemas
+app/stealth_compat.py    playwright-stealth 1.x/2.x compatibility
+app/stealth_hardening.js Supplemental fingerprint hardening
+tests/                   Offline and opt-in live tests
 ```
-app/
-  main.py               FastAPI app: /health, /harvest, lifespan-managed browser
-  harvester.py          Browser driver: stealth, proxy, challenge wait, harvest
-  stealth_compat.py     Shim over playwright-stealth 1.x / 2.x + hardening loader
-  stealth_hardening.js  Extra evasions injected on every page (plugins/WebGL/perms)
-  models.py             Pydantic request/response schemas
-tests/                    In-container pytest suite + local target-server fixture
-  test_live_stealth.py    Opt-in live tests: sannysoft verdicts + raw signals
-  test_live_fingerprint.py  Opt-in live tests: one anti-bot/fingerprint target each
-Dockerfile           base (runtime) and test build targets, one image
-docker-compose.yml   Convenience runner (shm_size, port map)
-Makefile             One-command build/run/test wrappers (make, make test-live, live-<target>)
-```
-
-## Responsible use
-
-This tool loads pages through a real browser to collect the session state a site
-grants you. Use it only against targets you own or are authorized to access, and
-in accordance with those sites' terms of service and applicable law.
-
-## License
-
-Released under the [MIT License](LICENSE).

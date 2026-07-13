@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 
 class ProxyConfig(BaseModel):
@@ -26,11 +27,15 @@ class ProxyConfig(BaseModel):
     @classmethod
     def _validate_server(cls, v: str) -> str:
         v = v.strip()
-        if not v:
-            raise ValueError("proxy.server must not be empty")
-        allowed = ("http://", "https://", "socks5://", "socks4://")
-        if not v.startswith(allowed):
-            raise ValueError(f"proxy.server must start with one of {allowed}")
+        try:
+            parsed = urlsplit(v)
+        except ValueError as exc:
+            raise ValueError("proxy.server must be a valid URL") from exc
+        allowed = ("http", "https", "socks5")
+        if parsed.scheme not in allowed or not parsed.hostname:
+            raise ValueError("proxy.server must use http, https, or socks5")
+        if parsed.username or parsed.password:
+            raise ValueError("put proxy credentials in username/password fields")
         return v
 
     def to_playwright(self) -> dict[str, str]:
@@ -48,9 +53,20 @@ class HarvestRequest(BaseModel):
     url: str = Field(..., description="Target URL to load and harvest from")
     proxy: ProxyConfig | None = Field(default=None, description="Optional proxy configuration")
 
-    return_html: bool = Field(default=False, description="Include the fully rendered HTML in the response")
+    return_html: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("return_html", "include_html", "includeHtml"),
+        description="Include the fully rendered HTML in the response",
+    )
+    include_secrets: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("include_secrets", "includeSecrets"),
+        description="Request cookie/storage/header values when the operator permits it",
+    )
     return_screenshot: bool = Field(
-        default=False, description="Include a base64-encoded PNG screenshot in the response"
+        default=False,
+        validation_alias=AliasChoices("return_screenshot", "include_screenshot", "returnScreenshot"),
+        description="Include a base64-encoded PNG screenshot in the response",
     )
 
     wait_until: Literal["load", "domcontentloaded", "networkidle", "commit"] = Field(
@@ -69,6 +85,13 @@ class HarvestRequest(BaseModel):
         ge=0,
         le=120_000,
         description="Extra idle wait after load, giving anti-bot challenges time to resolve",
+    )
+    wait_for_ms: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("wait_for_ms", "waitForMs"),
+        ge=0,
+        le=10_000,
+        description="Compatibility alias for a bounded post-navigation wait",
     )
     challenge_wait_ms: int = Field(
         default=15_000,
@@ -90,8 +113,14 @@ class HarvestRequest(BaseModel):
     @classmethod
     def _validate_url(cls, v: str) -> str:
         v = v.strip()
-        if not (v.startswith("http://") or v.startswith("https://")):
-            raise ValueError("url must start with http:// or https://")
+        try:
+            parsed = urlsplit(v)
+        except ValueError as exc:
+            raise ValueError("url must be a valid absolute URL") from exc
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("url must use http:// or https://")
+        if parsed.username or parsed.password:
+            raise ValueError("credentials in the target URL are not allowed")
         return v
 
 
@@ -111,11 +140,19 @@ class HarvestResponse(BaseModel):
     url: str
     final_url: str | None = None
     status: int | None = None
+    final_status: int | None = None
     title: str | None = None
 
     cookies: list[dict[str, Any]] = Field(default_factory=list)
     local_storage: dict[str, str] = Field(default_factory=dict)
     session_storage: dict[str, str] = Field(default_factory=dict)
+
+    request_headers: dict[str, str] = Field(default_factory=dict)
+    response_headers: dict[str, str] = Field(default_factory=dict)
+    scraper_headers: dict[str, str] = Field(default_factory=dict)
+    bypass: dict[str, Any] = Field(default_factory=dict)
+    protection: dict[str, Any] = Field(default_factory=dict)
+    secrets_included: bool = False
 
     challenge_detected: bool = False
     challenge_cleared: bool | None = None

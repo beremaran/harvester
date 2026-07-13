@@ -1,13 +1,16 @@
-"""FastAPI service exposing the cookie/session harvester."""
+"""FastAPI service exposing the authenticated stealth capture API."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .config import Config, load_config, validate_config
 from .harvester import Harvester
 from .models import HarvestRequest, HarvestResponse
 
@@ -17,11 +20,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("harvester.api")
 
-harvester = Harvester()
+config: Config = load_config()
+harvester = Harvester(config=config, enforce_security=True)
+_active = 0
+_active_lock = asyncio.Lock()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
+    validate_config(config)
     await harvester.start()
     try:
         yield
@@ -30,30 +37,111 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Cookie/Session Harvester",
-    description="Load a URL through a proxy with playwright-stealth and harvest cookies, "
-    "storage, and optionally rendered HTML — solving anti-bot challenges along the way.",
-    version="1.0.0",
+    title="Stealth Authorized Browser Capture API",
+    description=(
+        "Load an allowlisted URL through a stealth Playwright browser, wait for "
+        "authorized anti-bot challenges, and return redacted browser state, "
+        "scraper headers, and protection metadata."
+    ),
+    version="2.0.0",
     lifespan=lifespan,
 )
 
 
+@app.middleware("http")
+async def request_size_limit(request: Request, call_next: Any):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            too_large = int(content_length) > config.max_body_bytes
+        except ValueError:
+            too_large = True
+        if too_large:
+            return JSONResponse(status_code=413, content={"error": "request body too large"})
+    return await call_next(request)
+
+
+def _authorized(request: Request) -> bool:
+    return bool(config.api_key) and request.headers.get("authorization") == f"Bearer {config.api_key}"
+
+
+async def _reserve_capacity() -> bool:
+    global _active
+    async with _active_lock:
+        if _active >= config.max_concurrency:
+            return False
+        _active += 1
+        return True
+
+
+async def _release_capacity() -> None:
+    global _active
+    async with _active_lock:
+        _active -= 1
+
+
+def _capture_payload(result: HarvestResponse) -> dict[str, Any]:
+    """Return the original Node service's camelCase scraper contract."""
+    payload: dict[str, Any] = {
+        "finalUrl": result.final_url,
+        "status": result.status,
+        "finalStatus": result.final_status,
+        "title": result.title,
+        "cookies": result.cookies,
+        "storage": {
+            "localStorage": result.local_storage,
+            "sessionStorage": result.session_storage,
+        },
+        "requestHeaders": result.request_headers,
+        "responseHeaders": result.response_headers,
+        "scraperHeaders": result.scraper_headers,
+        "bypass": result.bypass,
+        "protection": result.protection,
+        "secretsIncluded": result.secrets_included,
+        "ok": result.ok,
+    }
+    if result.html is not None:
+        payload["html"] = result.html
+    if result.screenshot_b64 is not None:
+        payload["screenshotB64"] = result.screenshot_b64
+    if result.error is not None:
+        payload["error"] = result.error
+    return payload
+
+
+async def _run_harvest(request: Request, req: HarvestRequest, *, capture_style: bool):
+    if not _authorized(request):
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    if not await _reserve_capacity():
+        return JSONResponse(status_code=429, content={"error": "capacity exceeded"})
+    try:
+        logger.info("harvest request url=%s proxy=%s", req.url, bool(req.proxy))
+        result = await harvester.harvest(req)
+        status = 200 if result.ok else 502
+        if capture_style:
+            return JSONResponse(status_code=status, content=_capture_payload(result))
+        if not result.ok:
+            return JSONResponse(status_code=status, content=result.model_dump())
+        return result
+    except Exception as exc:  # noqa: BLE001 - keep API failures structured
+        logger.exception("unexpected harvest error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await _release_capacity()
+
+
 @app.get("/health")
+@app.get("/healthz")
 async def health() -> dict[str, object]:
     ok = await harvester.healthy()
-    return {"status": "ok" if ok else "degraded", "browser_connected": ok}
+    return {"status": "ok" if ok else "degraded", "browser_connected": ok, "ok": ok}
 
 
 @app.post("/harvest", response_model=HarvestResponse)
-async def harvest(req: HarvestRequest) -> HarvestResponse:
-    logger.info("harvest request url=%s proxy=%s", req.url, bool(req.proxy))
-    try:
-        result = await harvester.harvest(req)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("unexpected harvest error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+async def harvest(request: Request, req: HarvestRequest):
+    return await _run_harvest(request, req, capture_style=False)
 
-    if not result.ok:
-        # Still return the structured body (with error) but signal failure.
-        return JSONResponse(status_code=502, content=result.model_dump())
-    return result
+
+@app.post("/v1/capture")
+async def capture(request: Request, req: HarvestRequest):
+    return await _run_harvest(request, req, capture_style=True)
