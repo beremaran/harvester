@@ -35,6 +35,21 @@ async def test_html_omitted_by_default(harvester, target_server):
     assert resp.html is None
 
 
+async def test_extra_headers_are_applied_to_navigation(harvester, target_server):
+    from dataclasses import replace
+
+    original = harvester.config
+    harvester.config = replace(original, allow_caller_headers=True)
+    try:
+        resp = await harvester.harvest(
+            HarvestRequest(url=f"{target_server}/inspect", extra_headers={"x-harvester-extra": "yes"})
+        )
+    finally:
+        harvester.config = original
+    assert resp.ok, resp.error
+    assert resp.request_headers["x-harvester-extra"] == "yes"
+
+
 async def test_screenshot_capture(harvester, target_server):
     resp = await harvester.harvest(HarvestRequest(url=target_server, return_screenshot=True))
     assert resp.ok, resp.error

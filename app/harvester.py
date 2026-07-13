@@ -196,7 +196,9 @@ class Harvester:
         context_kwargs.update(stealth_context_kwargs())
         return context_kwargs
 
-    async def _install_request_guards(self, page: Page, state: dict[str, Any]) -> None:
+    async def _install_request_guards(
+        self, page: Page, state: dict[str, Any], req: HarvestRequest
+    ) -> None:
         async def handle(route: Any) -> None:
             request = route.request
             try:
@@ -207,6 +209,8 @@ class Harvester:
                 if self.enforce_security:
                     await assert_safe_url(request.url, self.config)
                 headers = await request.all_headers()
+                if req.extra_headers:
+                    headers.update(req.extra_headers)
                 try:
                     main_frame_navigation = request.is_navigation_request() and request.frame == page.main_frame
                 except Exception:  # noqa: BLE001 - detached frames can disappear during redirects
@@ -222,7 +226,10 @@ class Harvester:
                 else:
                     if bypass:
                         state["insecure_bypass_blocked"] = True
-                    await route.continue_()
+                    if req.extra_headers:
+                        await route.continue_(headers=headers)
+                    else:
+                        await route.continue_()
                 if main_frame_navigation:
                     state["latest_request_headers"] = dict(headers)
             except Exception as exc:  # noqa: BLE001 - security boundary failures abort the request
@@ -264,7 +271,7 @@ class Harvester:
             )
             async with self.open_stealth_page(req) as (context, page):
                 if self.enforce_security:
-                    await self._install_request_guards(page, state)
+                    await self._install_request_guards(page, state, req)
 
                 def remember_response(candidate: Response) -> None:
                     try:

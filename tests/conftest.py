@@ -68,6 +68,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):  # noqa: N802 - stdlib naming
+        if self.path.startswith("/inspect"):
+            value = self.headers.get("x-harvester-extra", "missing")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(value.encode("utf-8"))
+            return
         if self.path.startswith("/bypass"):
             if self.headers.get("x-harvester-bypass") != "test-secret":
                 self.send_response(403)

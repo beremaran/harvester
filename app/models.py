@@ -106,7 +106,9 @@ class HarvestRequest(BaseModel):
     viewport_width: int = Field(default=1920, ge=320, le=3840)
     viewport_height: int = Field(default=1080, ge=240, le=2160)
     extra_headers: dict[str, str] | None = Field(
-        default=None, description="Additional HTTP headers to send with every request"
+        default=None,
+        validation_alias=AliasChoices("extra_headers", "extraHeaders"),
+        description="Additional HTTP headers to send with every request",
     )
 
     @field_validator("url")
