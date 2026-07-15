@@ -11,6 +11,13 @@ project. It does not provide API authentication, target-host allowlisting,
 DNS filtering, or secret redaction. Keep the container private to that trusted
 network.
 
+## Responsible use
+
+Use this software only with systems you own or are explicitly authorized to
+automate. Do not use it to obtain third-party credentials or session material,
+bypass authentication or authorization, conduct account abuse, or violate
+applicable terms or laws.
+
 ## Build and run
 
 ```bash

@@ -2,6 +2,9 @@
 
 Thanks for helping improve Harvester.
 
+Participation in this project is governed by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Before opening a change
 
 - Use an issue for substantial behavior or API changes so the approach can be
