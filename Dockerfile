@@ -1,6 +1,6 @@
 # Single-image cookie/session harvester.
 # Base image ships Chromium + all system deps matching the pinned Playwright.
-FROM mcr.microsoft.com/playwright/python:v1.49.1-noble AS base
+FROM mcr.microsoft.com/playwright/python:v1.61.0-noble AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
