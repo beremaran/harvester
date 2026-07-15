@@ -1,5 +1,7 @@
 # Stealth Browser Capture API
 
+[![CI](https://github.com/beremaran/harvester/actions/workflows/ci.yml/badge.svg)](https://github.com/beremaran/harvester/actions/workflows/ci.yml)
+
 An HTTP service that loads a URL through Chromium with `playwright-stealth`,
 waits for known anti-bot challenges, and returns cookies, web storage, browser
 headers, rendered HTML, screenshots, and protection metadata.
@@ -15,8 +17,14 @@ network.
 docker compose up --build
 ```
 
-The API listens on `http://localhost:8080`. Chromium needs a larger shared
-memory segment; Compose configures `1gb`.
+The API listens on `http://localhost:8080`. Compose binds the published port to
+`127.0.0.1` by default and configures the `1gb` shared-memory segment Chromium
+needs. Containers in the same Compose network can reach it at
+`http://harvester:8080`.
+
+To deliberately publish on another interface, set `HOST_BIND` before starting
+Compose. Do this only when an appropriate external authentication and network
+boundary protects the service.
 
 ## API
 
@@ -82,6 +90,9 @@ oversized bodies return `413`, and capacity limits return `429`.
 | `MAX_BODY_BYTES` | `65536` | Maximum capture request body size. |
 | `PORT` | `8080` | HTTP listen port. |
 
+`HOST_BIND` is a Compose-only setting. It defaults to `127.0.0.1` and controls
+which host interface publishes `PORT`.
+
 ## Tests
 
 The supported workflow runs the pinned Playwright environment in Docker:
@@ -109,3 +120,14 @@ app/stealth_compat.py    playwright-stealth 1.x/2.x compatibility
 app/stealth_hardening.js Supplemental fingerprint hardening
 tests/                   Offline and opt-in live tests
 ```
+
+## Contributing and security
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the Docker
+development workflow and pull request expectations. Please report security
+issues privately as described in [SECURITY.md](SECURITY.md), rather than opening
+a public issue.
+
+## License
+
+This project is available under the [MIT License](LICENSE).
