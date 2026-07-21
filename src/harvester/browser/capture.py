@@ -80,25 +80,32 @@ class Harvester:
                 enforce_boundary=self.enforce_security,
             )
             async with self.open_stealth_page(req) as (context, page):
-                if self.enforce_security:
-                    user_agent = req.user_agent or DEFAULT_UA
-                    await RequestGuard(self.config, self.enforce_security, user_agent).install(page, state)
+                try:
+                    if self.enforce_security:
+                        user_agent = req.user_agent or DEFAULT_UA
+                        await RequestGuard(self.config, self.enforce_security, user_agent).install(page, state)
 
-                nav_response = await self._navigate(page, req, resp, state, target)
-                await await_challenge(page, req, resp)
-                await self._apply_post_navigation_waits(page, req)
+                    nav_response = await self._navigate(page, req, resp, state, target)
+                    await await_challenge(page, req, resp)
+                    await self._apply_post_navigation_waits(page, req)
 
-                resp.final_url = page.url
-                resp.title = await self._safe_title(page)
+                    resp.final_url = page.url
+                    resp.title = await self._safe_title(page)
 
-                raw_cookies = await bounded(context.cookies(), default=[], what="context.cookies()")
-                await self._populate_browser_state(page, resp, raw_cookies, include_secrets)
-                await self._populate_network_state(
-                    page, context, target, state, nav_response, raw_cookies, resp, include_secrets
-                )
-                await self._populate_outputs(page, req, resp)
+                    raw_cookies = await bounded(context.cookies(), default=[], what="context.cookies()")
+                    await self._populate_browser_state(page, resp, raw_cookies, include_secrets)
+                    await self._populate_network_state(
+                        page, context, target, state, nav_response, raw_cookies, resp, include_secrets
+                    )
+                    await self._populate_outputs(page, req, resp)
 
-                resp.ok = True
+                    resp.ok = True
+                except Exception as exc:
+                    logger.exception("harvest failed for %s", req.url)
+                    resp.ok = False
+                    resp.error = f"{type(exc).__name__}: {exc}"
+                    if req.return_screenshot and resp.screenshot_b64 is None:
+                        await self._best_effort_screenshot(page, req, resp)
         except Exception as exc:
             logger.exception("harvest failed for %s", req.url)
             resp.ok = False
@@ -215,5 +222,15 @@ class Harvester:
                 raise ValueError("rendered HTML exceeds MAX_HTML_BYTES")
             resp.html = html
         if req.return_screenshot:
-            png = await page.screenshot(full_page=False, timeout=req.timeout_ms or self.config.navigation_timeout_ms)
+            await self._best_effort_screenshot(page, req, resp)
+
+    async def _best_effort_screenshot(self, page: Page, req: HarvestRequest, resp: HarvestResponse) -> None:
+        timeout_ms = req.timeout_ms or self.config.navigation_timeout_ms
+        png = await bounded(
+            page.screenshot(full_page=False, timeout=timeout_ms),
+            default=None,
+            timeout_s=(timeout_ms / 1000) + 1,
+            what="page.screenshot()",
+        )
+        if png is not None:
             resp.screenshot_b64 = base64.b64encode(png).decode("ascii")

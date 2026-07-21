@@ -41,6 +41,23 @@ async def test_screenshot_capture(harvester, target_server):
     assert len(resp.screenshot_b64) > 100
 
 
+async def test_screenshot_is_best_effort_when_capture_fails(harvester, target_server):
+    from dataclasses import replace
+
+    original = harvester.config
+    harvester.config = replace(original, max_html_bytes=1)
+    try:
+        req = HarvestRequest(url=target_server, return_html=True, return_screenshot=True)
+        resp = await harvester.harvest(req)
+    finally:
+        harvester.config = original
+
+    assert resp.ok is False
+    assert resp.error is not None
+    assert resp.screenshot_b64 is not None
+    assert len(resp.screenshot_b64) > 100
+
+
 async def test_challenge_is_detected_and_cleared(harvester, target_server):
     req = HarvestRequest(
         url=f"{target_server}/challenge",

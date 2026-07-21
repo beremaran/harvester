@@ -65,6 +65,15 @@ class RequestGuard:
                     state["latest_request_headers"] = dict(headers)
             except Exception as exc:
                 logger.debug("aborting browser request %s: %s", request.url, exc)
-                await route.abort("blockedbyclient")
+                try:
+                    await route.abort("blockedbyclient")
+                except Exception as abort_exc:
+                    # The page/context can close mid-flight while subresource
+                    # requests are still in the route handler (e.g. a heavy
+                    # page torn down right after navigation completes). This
+                    # task is scheduled by Playwright itself, not awaited by
+                    # our code, so an escaping exception here becomes an
+                    # unretrieved-future error on the event loop.
+                    logger.debug("abort also failed for %s: %s", request.url, abort_exc)
 
         await page.route("**/*", handle)
