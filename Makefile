@@ -14,16 +14,19 @@
 #   (plus `automation` for the raw-signals test). List them: `make live-list`.
 #
 # Forward extra pytest args with PYTEST_ARGS, e.g. `make test-live PYTEST_ARGS=-x`.
+# The CDP stealth patch (rebrowser-patches, see README) is off by default; opt in
+# to a live run with it enabled via `make test-live ENABLE_CDP_STEALTH_PATCH=true`.
 
-DOCKER      ?= docker
-RUN_IMAGE   ?= harvester:latest
-TEST_IMAGE  ?= harvester:test
-SHM         ?= 1g
-PYTEST      ?= pytest -v
-PYTEST_ARGS ?=
+DOCKER               ?= docker
+RUN_IMAGE            ?= harvester:latest
+TEST_IMAGE           ?= harvester:test
+SHM                  ?= 1g
+PYTEST               ?= pytest -v
+PYTEST_ARGS          ?=
+ENABLE_CDP_STEALTH_PATCH ?= false
 
 TEST_RUN      = $(DOCKER) run --rm --shm-size=$(SHM) $(TEST_IMAGE)
-TEST_RUN_LIVE = $(DOCKER) run --rm --shm-size=$(SHM) -e RUN_LIVE_TESTS=1 $(TEST_IMAGE)
+TEST_RUN_LIVE = $(DOCKER) run --rm --shm-size=$(SHM) -e RUN_LIVE_TESTS=1 -e ENABLE_CDP_STEALTH_PATCH=$(ENABLE_CDP_STEALTH_PATCH) $(TEST_IMAGE)
 
 .DEFAULT_GOAL := help
 

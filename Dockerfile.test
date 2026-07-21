@@ -1,19 +1,30 @@
 # Test image: builds on the base app image, adds dev deps + tests.
 # Build with: docker build -f Dockerfile.test -t harvester-test .
-FROM mcr.microsoft.com/playwright/python:v1.61.0-noble
+# Playwright pinned to 1.52.0 -- see Dockerfile for why (rebrowser-patches
+# needs the unbundled driver layout that only exists up to this version).
+FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/opt/venv
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    REBROWSER_PATCHES_RUNTIME_FIX_MODE=0
 
 WORKDIR /srv
 
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-install-project --no-dev
 RUN uv sync --locked --no-install-project
+
+RUN apt-get update -qq \
+    && apt-get install -y -qq --no-install-recommends nodejs npm patch \
+    && npx --yes rebrowser-patches@latest patch \
+         --packagePath=/opt/venv/lib/python3.14/site-packages/playwright/driver/package \
+    && apt-get purge -y -qq nodejs npm patch \
+    && apt-get autoremove -y -qq \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY src ./src
 COPY tests ./tests

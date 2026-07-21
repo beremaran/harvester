@@ -30,6 +30,7 @@ Run one target at a time with the Makefile, e.g. ``make live-rebrowser`` or
 """
 
 import json
+import re
 
 import pytest
 from playwright.async_api import Error as PWError
@@ -90,13 +91,10 @@ async def test_rebrowser_bot_detector_finds_no_leak(harvester):
     if not any(name in text for name in _REBROWSER_KNOWN_TESTS):
         pytest.skip("rebrowser results not present (page shape changed or IP-blocked)")
 
-    detections = [
-        line.strip()
-        for line in text.splitlines()
-        if ("🚨" in line or "detected" in line.lower())
-        and "not detected" not in line.lower()
-        and "undetected" not in line.lower()
-    ]
+    # The page marks each probe's own verdict with 🟢 (pass), ⚪️ (not triggered),
+    # or 🔴 (detected) — that marker is the actual signal, not the word
+    # "detected" (which also appears in passing notes like "No leak detected.").
+    detections = [line.strip() for line in text.splitlines() if "🔴" in line or "🚨" in line]
     assert not detections, f"rebrowser flagged automation leaks: {detections}"
 
 
@@ -152,13 +150,25 @@ async def test_creepjs_reports_no_bot(harvester):
             })"""
         )
 
-    if "trust score" not in text.lower() and "fingerprint" not in text.lower():
+    # This deployed build never renders literal "trust score"/"fingerprint" text
+    # (that's the marketing homepage, not the GH Pages report view) — it renders
+    # an "FP ID: <hash>" line instead. That's the actual, stable "did it render"
+    # signal for this page.
+    if "fp id:" not in text.lower():
         pytest.skip("CreepJS report did not render (page shape changed / blocked)")
 
     assert signals["webdriver"] in (False, None), f"navigator.webdriver leaked on CreepJS: {signals['webdriver']!r}"
     assert "HeadlessChrome" not in signals["ua"], f"headless UA leaked: {signals['ua']}"
     assert not signals["seleniumGlobals"], f"selenium globals present: {signals['seleniumGlobals']}"
     assert not signals["cdc"], "ChromeDriver cdc_ globals present on CreepJS"
+
+    # CreepJS's "Workers" test runs its own probe *inside* a dedicated Worker and
+    # a ServiceWorker, which have their own navigator/WebGL context separate from
+    # the main page — checking navigator.webdriver/UA on the page above says
+    # nothing about what those worker contexts report. Read the rendered report
+    # text itself, which is where that leak actually surfaces.
+    leaked = [tell for tell in ("HeadlessChrome", "SwiftShader", "llvmpipe", "Mesa OffScreen") if tell in text]
+    assert not leaked, f"CreepJS worker-context probe leaked automation tells: {leaked}"
 
 
 # --- browserleaks WebGL -----------------------------------------------------
@@ -185,31 +195,77 @@ async def test_browserleaks_webgl_is_hardware(harvester):
 
 
 # --- iphey: browser trustworthiness -----------------------------------------
-# https://iphey.com/ renders a verdict card: "Trustworthy" (good) vs
-# "Suspicious" / "Not reliable" (bad). The words also appear in the page's
-# explanatory copy, so we must read the VERDICT element, not the whole page —
-# iphey renders exactly one of these three as a standalone status line/heading.
+# https://iphey.com/ renders a headline "Your Digital Identity Looks
+# Reliable"/"Unreliable" plus a BOT section with individual boolean signals
+# (hasCDP, hasWebdriver, hasUserAgent, hasNavigator). "Reliable"/"Unreliable" is
+# the real, currently-rendered verdict text on this build (not the
+# "Trustworthy"/"Suspicious"/"Not reliable" wording this test used to look for,
+# which never appears on the page — that mismatch meant this test silently
+# skipped on every real run and never actually checked anything).
 # It loads async and may block some egress IPs, in which case we skip.
 
 _IPHEY = "https://iphey.com/"
-_IPHEY_VERDICTS = ("trustworthy", "suspicious", "not reliable")
 
 
 async def test_iphey_trustworthy(harvester):
     req = HarvestRequest(url=_IPHEY)
     async with harvester.open_stealth_page(req) as (_ctx, page):
         await _goto(page, _IPHEY, wait_until="networkidle")
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(8000)
         text = await _inner_text(page)
+        bot_signals = await page.evaluate(
+            """() => {
+                // "BOT" also appears as a nav tab label; the detail section with
+                // hasCDP/hasWebdriver/etc. is the *last* occurrence in the text.
+                const idx = document.body.innerText.lastIndexOf('BOT');
+                return idx === -1 ? null : document.body.innerText.slice(idx, idx + 120);
+            }"""
+        )
 
-    # The verdict is shown on its own line; match only standalone verdict lines,
-    # never the same words embedded in a sentence of marketing copy.
-    verdict_lines = {line.strip().lower() for line in text.splitlines() if line.strip().lower() in _IPHEY_VERDICTS}
-    if not verdict_lines:
+    match = re.search(r"Your Digital Identity Looks\s*\n?\s*(Reliable|Unreliable)", text)
+    if not match:
         pytest.skip("iphey verdict not present (async render / IP-blocked)")
-    assert "suspicious" not in verdict_lines and "not reliable" not in verdict_lines, (
-        f"iphey rated the browser as not trustworthy: {verdict_lines}"
-    )
+
+    if match.group(1) != "Reliable":
+        # Known gap: iphey's BOT panel flags exactly `hasCDP: true` (hasWebdriver/
+        # hasUserAgent/hasNavigator all false) — it fingerprints the Chrome
+        # DevTools Protocol connection Playwright itself uses to drive the
+        # browser, not anything our JS-level stealth patches touch.
+        #
+        # Attempted fix, validated broken, kept off by default:
+        # ENABLE_CDP_STEALTH_PATCH (config.py / session.py) turns on a
+        # rebrowser-patches CDP patch baked into the driver at build time
+        # (Dockerfile), which stops the driver from calling Runtime.enable. It
+        # requires pinning Playwright to 1.52.0 (the newest version whose
+        # Python driver still ships unbundled source for the patch to target —
+        # see Dockerfile comment). Installs cleanly, but live-testing it with
+        # the flag on found it breaks execution-context resolution: this exact
+        # test then fails with `Page.evaluate: Cannot read properties of
+        # undefined (reading 'evaluateExpression')` instead of reaching the
+        # hasCDP check at all, and it regresses
+        # test_rebrowser_bot_detector_finds_no_leak (flags a 🔴 pwInitScripts
+        # leak that doesn't happen with the patch off) — it conflicts with
+        # this service's heavy use of add_init_script for stealth. This is the
+        # second independent implementation of the same idea to fail against
+        # this codebase: an earlier spike of the standalone
+        # `rebrowser-playwright` package deadlocked on
+        # `page.goto("https://iphey.com/")` specifically. Two different
+        # implementations failing the same way is a real signal, not a fluke
+        # — don't re-attempt without addressing the init-script conflict
+        # directly.
+        # If bot_signals ever shows anything beyond hasCDP leaking, that's a
+        # genuine regression in our own stealth patches — fail loudly on that.
+        only_known_gap = bot_signals is not None and bool(
+            re.fullmatch(
+                r"BOT\s*\nhasCDP\s*\ntrue\s*\nhasWebdriver\s*\nfalse\s*\nhasUserAgent\s*\nfalse\s*\nhasNavigator\s*\nfalse.*",
+                bot_signals,
+                re.DOTALL,
+            )
+        )
+        if only_known_gap:
+            pytest.xfail(f"known gap: CDP connection detected via hasCDP (bot signals: {bot_signals!r})")
+
+    assert match.group(1) == "Reliable", f"iphey rated the browser as {match.group(1)!r} (bot signals: {bot_signals!r})"
 
 
 # --- TLS / HTTP2 network fingerprint ----------------------------------------

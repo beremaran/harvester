@@ -24,6 +24,7 @@ class Config:
     allow_insecure_bypass_headers: bool = False
     allow_caller_headers: bool = False
     enable_docs: bool = True
+    enable_cdp_stealth: bool = False
 
 
 def _read_secret(values: Mapping[str, str], name: str) -> str:
@@ -112,6 +113,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         allow_insecure_bypass_headers=values.get("ALLOW_INSECURE_BYPASS_HEADERS", "false").lower() == "true",
         allow_caller_headers=values.get("ALLOW_CALLER_HEADERS", "false").lower() == "true",
         enable_docs=values.get("ENABLE_DOCS", "true").lower() == "true",
+        enable_cdp_stealth=values.get("ENABLE_CDP_STEALTH_PATCH", "false").lower() == "true",
     )
 
 
