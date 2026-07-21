@@ -126,6 +126,8 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
 
 def host_is_allowed(hostname: str, allowed_hosts: tuple[str, ...] | list[str]) -> bool:
+    if "*" in allowed_hosts:
+        return True
     host = hostname.lower().removesuffix(".")
     for allowed in allowed_hosts:
         normalized = allowed.lower().removeprefix("*.").removesuffix(".")
