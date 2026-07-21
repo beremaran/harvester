@@ -1,5 +1,6 @@
 """FastAPI service exposing the authenticated stealth capture API."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -117,10 +118,14 @@ async def _run_harvest(request: Request, req: HarvestRequest):
             return JSONResponse(status_code=429, content={"error": "capacity exceeded"})
         try:
             logger.info("harvest request url=%s proxy=%s", req.url, bool(req.proxy))
-            result = await harvester.harvest(req)
+            deadline_s = (max(config.navigation_timeout_ms, req.timeout_ms or 0) / 1000) + 30
+            result = await asyncio.wait_for(harvester.harvest(req), timeout=deadline_s)
             if not result.ok:
                 return JSONResponse(status_code=502, content=result.model_dump())
             return result
+        except TimeoutError:
+            logger.error("harvest request hard-timed out url=%s", req.url)
+            return JSONResponse(status_code=502, content={"error": "harvest exceeded overall time budget"})
         except Exception as exc:
             logger.exception("unexpected harvest error")
             raise HTTPException(status_code=500, detail=str(exc)) from exc

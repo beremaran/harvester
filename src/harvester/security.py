@@ -8,6 +8,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from harvester.config import Config, host_is_allowed
 
+DNS_RESOLVE_TIMEOUT_S = 5.0
+
 
 def is_private_address(address: str) -> bool:
     try:
@@ -36,14 +38,17 @@ async def _resolve_addresses(hostname: str) -> set[str]:
         pass
 
     try:
-        records = await asyncio.to_thread(
-            socket.getaddrinfo,
-            hostname,
-            None,
-            socket.AF_UNSPEC,
-            socket.SOCK_STREAM,
+        records = await asyncio.wait_for(
+            asyncio.to_thread(
+                socket.getaddrinfo,
+                hostname,
+                None,
+                socket.AF_UNSPEC,
+                socket.SOCK_STREAM,
+            ),
+            timeout=DNS_RESOLVE_TIMEOUT_S,
         )
-    except OSError as exc:
+    except (OSError, TimeoutError) as exc:
         raise ValueError("target hostname could not be resolved") from exc
     return {record[4][0] for record in records}
 
