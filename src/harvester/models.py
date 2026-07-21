@@ -49,7 +49,27 @@ class ProxyConfig(BaseModel):
 
 
 class HarvestRequest(BaseModel):
-    url: str = Field(..., description="Target URL to load and harvest from")
+    """Parameters for one authenticated, allowlisted browser capture."""
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "url": "https://example.com/product/123",
+                    "wait_until": "networkidle",
+                    "timeout_ms": 45000,
+                    "extra_wait_ms": 2000,
+                    "return_html": True,
+                }
+            ]
+        }
+    }
+
+    url: str = Field(
+        ...,
+        description="Target URL to load and harvest from. Must be http(s) and its host must be in ALLOWED_HOSTS.",
+        examples=["https://example.com/product/123"],
+    )
     proxy: ProxyConfig | None = Field(default=None, description="Optional proxy configuration")
 
     return_html: bool = Field(default=False, description="Include the fully rendered HTML in the response")
@@ -63,12 +83,19 @@ class HarvestRequest(BaseModel):
 
     wait_until: Literal["load", "domcontentloaded", "networkidle", "commit"] = Field(
         default="networkidle",
-        description="Playwright navigation wait condition",
+        description="Playwright navigation wait condition to consider the page loaded",
     )
-    timeout_ms: int = Field(default=45_000, ge=1_000, le=180_000, description="Navigation timeout in milliseconds")
+    timeout_ms: int = Field(
+        default=45_000,
+        ge=1_000,
+        le=180_000,
+        description="Navigation timeout in milliseconds",
+        examples=[45000],
+    )
     wait_for_selector: str | None = Field(
         default=None,
         description="Optional CSS selector to wait for after navigation (useful past a challenge)",
+        examples=["#main-content"],
     )
     extra_wait_ms: int = Field(
         default=0,
@@ -83,13 +110,19 @@ class HarvestRequest(BaseModel):
         description="Max time to poll for a known anti-bot interstitial to clear",
     )
 
-    user_agent: str | None = Field(default=None, description="Override the browser User-Agent")
-    locale: str = Field(default="en-US", description="Browser locale")
+    user_agent: str | None = Field(
+        default=None,
+        description="Override the browser User-Agent",
+        examples=["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"],
+    )
+    locale: str = Field(default="en-US", description="Browser locale, e.g. 'en-US'")
     timezone_id: str | None = Field(default=None, description="Browser timezone, e.g. 'America/New_York'")
-    viewport_width: int = Field(default=1920, ge=320, le=3840)
-    viewport_height: int = Field(default=1080, ge=240, le=2160)
+    viewport_width: int = Field(default=1920, ge=320, le=3840, description="Browser viewport width in pixels")
+    viewport_height: int = Field(default=1080, ge=240, le=2160, description="Browser viewport height in pixels")
     extra_headers: dict[str, str] | None = Field(
-        default=None, description="Additional HTTP headers to send with every request"
+        default=None,
+        description="Additional HTTP headers to send with every request",
+        examples=[{"X-Custom-Header": "value"}],
     )
 
     @field_validator("url")
@@ -108,40 +141,93 @@ class HarvestRequest(BaseModel):
 
 
 class Cookie(BaseModel):
+    """A single browser cookie as captured after navigation."""
+
     name: str
     value: str
     domain: str = ""
     path: str = "/"
-    expires: float = -1
+    expires: float = Field(default=-1, description="Unix timestamp the cookie expires at, or -1 for a session cookie")
     httpOnly: bool = False
     secure: bool = False
     sameSite: str | None = None
 
 
 class HarvestResponse(BaseModel):
-    ok: bool
-    url: str
-    final_url: str | None = None
-    status: int | None = None
-    final_status: int | None = None
-    title: str | None = None
+    """Result of a capture: page metadata, redacted browser state, and anti-bot bypass info."""
 
-    cookies: list[dict[str, Any]] = Field(default_factory=list)
-    local_storage: dict[str, str] = Field(default_factory=dict)
-    session_storage: dict[str, str] = Field(default_factory=dict)
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "ok": True,
+                    "url": "https://example.com/product/123",
+                    "final_url": "https://example.com/product/123",
+                    "status": 200,
+                    "final_status": 200,
+                    "title": "Example Product",
+                    "cookies": [],
+                    "local_storage": {},
+                    "session_storage": {},
+                    "request_headers": {},
+                    "response_headers": {"content-type": "text/html; charset=utf-8"},
+                    "scraper_headers": {"User-Agent": "Mozilla/5.0 ..."},
+                    "bypass": {},
+                    "protection": {"vendor": None},
+                    "secrets_included": False,
+                    "challenge_detected": False,
+                    "challenge_cleared": None,
+                    "html": None,
+                    "screenshot_b64": None,
+                    "elapsed_ms": 1420,
+                    "error": None,
+                }
+            ]
+        }
+    }
 
-    request_headers: dict[str, str] = Field(default_factory=dict)
-    response_headers: dict[str, str] = Field(default_factory=dict)
-    scraper_headers: dict[str, str] = Field(default_factory=dict)
-    bypass: dict[str, Any] = Field(default_factory=dict)
-    protection: dict[str, Any] = Field(default_factory=dict)
-    secrets_included: bool = False
+    ok: bool = Field(description="Whether the capture completed successfully")
+    url: str = Field(description="The originally requested URL")
+    final_url: str | None = Field(default=None, description="URL after redirects, if the page navigated further")
+    status: int | None = Field(default=None, description="HTTP status of the initial navigation response")
+    final_status: int | None = Field(default=None, description="HTTP status of the final response after redirects")
+    title: str | None = Field(default=None, description="Document title of the loaded page")
 
-    challenge_detected: bool = False
-    challenge_cleared: bool | None = None
+    cookies: list[dict[str, Any]] = Field(default_factory=list, description="Browser cookies captured after load")
+    local_storage: dict[str, str] = Field(default_factory=dict, description="localStorage key/value pairs")
+    session_storage: dict[str, str] = Field(default_factory=dict, description="sessionStorage key/value pairs")
 
-    html: str | None = None
-    screenshot_b64: str | None = None
+    request_headers: dict[str, str] = Field(default_factory=dict, description="Headers sent on the initial request")
+    response_headers: dict[str, str] = Field(
+        default_factory=dict, description="Headers received on the initial response"
+    )
+    scraper_headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Headers a scraper should replay to mimic this authenticated browser session",
+    )
+    bypass: dict[str, Any] = Field(default_factory=dict, description="Anti-bot bypass metadata, if any was applied")
+    protection: dict[str, Any] = Field(
+        default_factory=dict, description="Detected anti-bot/WAF protection on the target, if any"
+    )
+    secrets_included: bool = Field(
+        default=False, description="Whether cookie/storage/header values include actual secret contents"
+    )
 
-    elapsed_ms: int = 0
-    error: str | None = None
+    challenge_detected: bool = Field(default=False, description="Whether an anti-bot interstitial was encountered")
+    challenge_cleared: bool | None = Field(
+        default=None, description="Whether the detected challenge cleared before challenge_wait_ms elapsed"
+    )
+
+    html: str | None = Field(default=None, description="Fully rendered HTML, present only when return_html was set")
+    screenshot_b64: str | None = Field(
+        default=None, description="Base64-encoded PNG screenshot, present only when return_screenshot was set"
+    )
+
+    elapsed_ms: int = Field(default=0, description="Total time spent servicing the request, in milliseconds")
+    error: str | None = Field(default=None, description="Error message, present only when ok is false")
+
+
+class ErrorResponse(BaseModel):
+    """Shape of error responses returned by non-2xx status codes."""
+
+    error: str = Field(description="Human-readable error message", examples=["unauthorized"])

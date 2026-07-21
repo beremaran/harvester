@@ -23,6 +23,7 @@ class Config:
     bypass_headers_by_host: dict[str, dict[str, str]] | None = None
     allow_insecure_bypass_headers: bool = False
     allow_caller_headers: bool = False
+    enable_docs: bool = True
 
 
 def _read_secret(values: Mapping[str, str], name: str) -> str:
@@ -110,6 +111,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         bypass_headers_by_host=parse_bypass_headers(values.get("BYPASS_HEADERS_JSON", "")),
         allow_insecure_bypass_headers=values.get("ALLOW_INSECURE_BYPASS_HEADERS", "false").lower() == "true",
         allow_caller_headers=values.get("ALLOW_CALLER_HEADERS", "false").lower() == "true",
+        enable_docs=values.get("ENABLE_DOCS", "true").lower() == "true",
     )
 
 

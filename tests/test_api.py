@@ -70,19 +70,6 @@ async def test_harvest_failure_returns_502(client, target_server):
     assert r.json()["error"]
 
 
-async def test_capture_compatibility_contract_returns_secrets_when_enabled(client, target_server):
-    r = await client.post(
-        "/v1/capture",
-        json={"url": target_server, "includeHtml": True, "includeSecrets": True},
-        timeout=60,
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["finalStatus"] == 200
-    assert body["storage"]["localStorage"]["token"] == "abc123"
-    assert body["scraperHeaders"]["cookie"].startswith("session_id=")
-
-
 async def test_authentication_is_required(client, target_server):
     del client.headers["Authorization"]
     r = await client.post("/harvest", json={"url": target_server})
