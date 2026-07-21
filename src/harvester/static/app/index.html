@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Harvester Console</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d10;
+    --panel: #14171b;
+    --border: #262b31;
+    --text: #e6e9ec;
+    --muted: #8a929c;
+    --accent: #4da3ff;
+    --ok: #3ecf8e;
+    --err: #f2545b;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .badge {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 0;
+    height: calc(100vh - 49px);
+  }
+  .panel {
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .panel.left {
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 12px 0 4px;
+  }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%;
+    background: #0f1215;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 1px solid var(--accent); }
+  textarea { font-family: var(--mono); resize: vertical; min-height: 70px; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 0;
+  }
+  .check input { width: auto; }
+  .check label { margin: 0; font-size: 13px; color: var(--text); }
+  fieldset {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 16px 0 0;
+    padding: 10px 12px 14px;
+  }
+  legend {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 6px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  button.submit {
+    width: 100%;
+    margin-top: 18px;
+    padding: 10px;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #05161f;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.submit:disabled { opacity: .5; cursor: default; }
+  button.submit:hover:not(:disabled) { filter: brightness(1.08); }
+
+  .status-line {
+    margin-top: 10px;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--muted);
+    min-height: 16px;
+  }
+  .status-line.ok { color: var(--ok); }
+  .status-line.err { color: var(--err); }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+  }
+  .tab {
+    padding: 9px 12px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-content { padding: 16px; }
+  .hidden { display: none !important; }
+
+  pre {
+    background: #0f1215;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  table.kv { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  table.kv td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.kv td:first-child { color: var(--accent); white-space: nowrap; width: 1%; }
+  .empty { color: var(--muted); font-style: italic; padding: 20px 0; }
+  img.shot { max-width: 100%; border: 1px solid var(--border); border-radius: 6px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .meta-item { background: #0f1215; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  .meta-item .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .meta-item .v { font-family: var(--mono); font-size: 13px; margin-top: 2px; word-break: break-all; }
+  .right { display: flex; flex-direction: column; min-width: 0; }
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--muted); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Harvester Console</h1>
+  <span class="badge">/harvest playground</span>
+</header>
+
+<div class="layout">
+  <div class="panel left">
+    <form id="form">
+      <label for="apiBase">API base URL</label>
+      <input type="text" id="apiBase" placeholder="http://localhost:8080" />
+
+      <label for="apiKey">API key (Bearer token)</label>
+      <input type="password" id="apiKey" placeholder="optional if auth disabled" autocomplete="off" />
+
+      <label for="url">Target URL *</label>
+      <input type="text" id="url" placeholder="https://example.com/product/123" required />
+
+      <div class="row">
+        <div>
+          <label for="waitUntil">Wait until</label>
+          <select id="waitUntil">
+            <option value="networkidle" selected>networkidle</option>
+            <option value="load">load</option>
+            <option value="domcontentloaded">domcontentloaded</option>
+            <option value="commit">commit</option>
+          </select>
+        </div>
+        <div>
+          <label for="timeoutMs">Timeout (ms)</label>
+          <input type="number" id="timeoutMs" value="45000" min="1000" max="180000" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="extraWaitMs">Extra wait (ms)</label>
+          <input type="number" id="extraWaitMs" value="0" min="0" max="120000" />
+        </div>
+        <div>
+          <label for="challengeWaitMs">Challenge wait (ms)</label>
+          <input type="number" id="challengeWaitMs" value="15000" min="0" max="120000" />
+        </div>
+      </div>
+
+      <label for="waitForSelector">Wait for selector (optional)</label>
+      <input type="text" id="waitForSelector" placeholder="#main-content" />
+
+      <div class="check"><input type="checkbox" id="returnHtml" /><label for="returnHtml">Return rendered HTML</label></div>
+      <div class="check"><input type="checkbox" id="returnScreenshot" /><label for="returnScreenshot">Return screenshot</label></div>
+      <div class="check"><input type="checkbox" id="includeSecrets" /><label for="includeSecrets">Include secret values</label></div>
+
+      <fieldset>
+        <legend>Browser</legend>
+        <label for="userAgent">User-Agent override</label>
+        <input type="text" id="userAgent" placeholder="(default)" />
+        <div class="row">
+          <div>
+            <label for="locale">Locale</label>
+            <input type="text" id="locale" value="en-US" />
+          </div>
+          <div>
+            <label for="timezoneId">Timezone</label>
+            <input type="text" id="timezoneId" placeholder="America/New_York" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="viewportWidth">Viewport width</label>
+            <input type="number" id="viewportWidth" value="1920" min="320" max="3840" />
+          </div>
+          <div>
+            <label for="viewportHeight">Viewport height</label>
+            <input type="number" id="viewportHeight" value="1080" min="240" max="2160" />
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Extra request headers (JSON)</legend>
+        <textarea id="extraHeaders" placeholder='{"X-Custom-Header": "value"}'></textarea>
+      </fieldset>
+
+      <fieldset>
+        <legend>Proxy (optional, JSON)</legend>
+        <textarea id="proxy" placeholder='{"server": "http://host:port", "username": "", "password": ""}'></textarea>
+      </fieldset>
+
+      <button type="submit" class="submit" id="submitBtn">Harvest</button>
+      <div class="status-line" id="statusLine"></div>
+    </form>
+  </div>
+
+  <div class="panel right">
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="headers">Headers</div>
+      <div class="tab" data-tab="storage">Cookies &amp; Storage</div>
+      <div class="tab" data-tab="html">HTML</div>
+      <div class="tab" data-tab="screenshot">Screenshot</div>
+      <div class="tab" data-tab="raw">Raw JSON</div>
+    </div>
+    <div class="tab-content" id="tabContent">
+      <div class="empty">Submit a request to see results.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const form = $('form');
+  const submitBtn = $('submitBtn');
+  const statusLine = $('statusLine');
+  const tabContent = $('tabContent');
+  const tabs = document.querySelectorAll('.tab');
+
+  let lastResult = null;
+  let activeTab = 'overview';
+
+  const LS_KEY = 'harvester_console_prefs';
+  function loadPrefs() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const prefs = JSON.parse(raw);
+      if (prefs.apiBase) $('apiBase').value = prefs.apiBase;
+      if (prefs.apiKey) $('apiKey').value = prefs.apiKey;
+    } catch (e) { /* ignore */ }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        apiBase: $('apiBase').value.trim(),
+        apiKey: $('apiKey').value,
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  loadPrefs();
+  if (!$('apiBase').value) $('apiBase').value = window.location.origin;
+
+  tabs.forEach(t => t.addEventListener('click', () => {
+    activeTab = t.dataset.tab;
+    tabs.forEach(x => x.classList.toggle('active', x === t));
+    render();
+  }));
+
+  function parseJsonField(id, label) {
+    const raw = $(id).value.trim();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      throw new Error(`${label} is not valid JSON: ${e.message}`);
+    }
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function kvTable(obj) {
+    const entries = Object.entries(obj || {});
+    if (!entries.length) return '<div class="empty">none</div>';
+    return '<table class="kv">' + entries.map(([k, v]) =>
+      `<tr><td>${esc(k)}</td><td>${esc(typeof v === 'string' ? v : JSON.stringify(v))}</td></tr>`
+    ).join('') + '</table>';
+  }
+
+  function render() {
+    if (!lastResult) {
+      tabContent.innerHTML = '<div class="empty">Submit a request to see results.</div>';
+      return;
+    }
+    const r = lastResult;
+    if (activeTab === 'overview') {
+      const items = [
+        ['ok', r.ok],
+        ['status', r.status],
+        ['final_status', r.final_status],
+        ['title', r.title],
+        ['final_url', r.final_url],
+        ['challenge_detected', r.challenge_detected],
+        ['challenge_cleared', r.challenge_cleared],
+        ['secrets_included', r.secrets_included],
+        ['elapsed_ms', r.elapsed_ms],
+        ['error', r.error],
+      ];
+      tabContent.innerHTML =
+        '<div class="meta-grid">' +
+        items.map(([k, v]) => `<div class="meta-item"><div class="k">${esc(k)}</div><div class="v">${esc(v === undefined || v === null ? '—' : v)}</div></div>`).join('') +
+        '</div><h4>Protection</h4><pre>' + esc(JSON.stringify(r.protection ?? {}, null, 2)) + '</pre>' +
+        '<h4>Bypass</h4><pre>' + esc(JSON.stringify(r.bypass ?? {}, null, 2)) + '</pre>';
+    } else if (activeTab === 'headers') {
+      tabContent.innerHTML =
+        '<h4>Scraper headers</h4>' + kvTable(r.scraper_headers) +
+        '<h4 style="margin-top:16px">Request headers</h4>' + kvTable(r.request_headers) +
+        '<h4 style="margin-top:16px">Response headers</h4>' + kvTable(r.response_headers);
+    } else if (activeTab === 'storage') {
+      const cookies = r.cookies || [];
+      const cookieRows = cookies.length
+        ? '<table class="kv"><tr><td>name</td><td>value</td><td>domain</td><td>path</td><td>secure</td><td>httpOnly</td></tr>' +
+          cookies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.value)}</td><td>${esc(c.domain)}</td><td>${esc(c.path)}</td><td>${esc(c.secure)}</td><td>${esc(c.httpOnly)}</td></tr>`).join('') +
+          '</table>'
+        : '<div class="empty">none</div>';
+      tabContent.innerHTML =
+        '<h4>Cookies</h4>' + cookieRows +
+        '<h4 style="margin-top:16px">Local storage</h4>' + kvTable(r.local_storage) +
+        '<h4 style="margin-top:16px">Session storage</h4>' + kvTable(r.session_storage);
+    } else if (activeTab === 'html') {
+      tabContent.innerHTML = r.html
+        ? '<pre>' + esc(r.html) + '</pre>'
+        : '<div class="empty">No HTML returned — enable "Return rendered HTML" before submitting.</div>';
+    } else if (activeTab === 'screenshot') {
+      tabContent.innerHTML = r.screenshot_b64
+        ? `<img class="shot" src="data:image/png;base64,${r.screenshot_b64}" />`
+        : '<div class="empty">No screenshot returned — enable "Return screenshot" before submitting.</div>';
+    } else if (activeTab === 'raw') {
+      tabContent.innerHTML = '<pre>' + esc(JSON.stringify(r, null, 2)) + '</pre>';
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    savePrefs();
+    statusLine.className = 'status-line';
+    statusLine.innerHTML = '<span class="spinner"></span> harvesting…';
+    submitBtn.disabled = true;
+
+    try {
+      const apiBase = $('apiBase').value.trim().replace(/\/+$/, '');
+      const apiKey = $('apiKey').value.trim();
+      const url = $('url').value.trim();
+      if (!url) throw new Error('Target URL is required');
+
+      const body = {
+        url,
+        wait_until: $('waitUntil').value,
+        timeout_ms: Number($('timeoutMs').value) || 45000,
+        extra_wait_ms: Number($('extraWaitMs').value) || 0,
+        challenge_wait_ms: Number($('challengeWaitMs').value) || 15000,
+        return_html: $('returnHtml').checked,
+        return_screenshot: $('returnScreenshot').checked,
+        include_secrets: $('includeSecrets').checked,
+        locale: $('locale').value.trim() || 'en-US',
+        viewport_width: Number($('viewportWidth').value) || 1920,
+        viewport_height: Number($('viewportHeight').value) || 1080,
+      };
+      const waitForSelector = $('waitForSelector').value.trim();
+      if (waitForSelector) body.wait_for_selector = waitForSelector;
+      const userAgent = $('userAgent').value.trim();
+      if (userAgent) body.user_agent = userAgent;
+      const timezoneId = $('timezoneId').value.trim();
+      if (timezoneId) body.timezone_id = timezoneId;
+
+      const extraHeaders = parseJsonField('extraHeaders', 'Extra headers');
+      if (extraHeaders) body.extra_headers = extraHeaders;
+      const proxy = parseJsonField('proxy', 'Proxy');
+      if (proxy) body.proxy = proxy;
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+      const started = performance.now();
+      const resp = await fetch(`${apiBase}/harvest`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      const elapsed = Math.round(performance.now() - started);
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { error: text }; }
+
+      if (resp.ok) {
+        statusLine.className = 'status-line ok';
+        statusLine.textContent = `HTTP ${resp.status} · ${elapsed}ms round trip`;
+      } else {
+        statusLine.className = 'status-line err';
+        statusLine.textContent = `HTTP ${resp.status} · ${data.error || 'request failed'}`;
+      }
+      lastResult = data;
+      render();
+    } catch (err) {
+      statusLine.className = 'status-line err';
+      statusLine.textContent = err.message || String(err);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

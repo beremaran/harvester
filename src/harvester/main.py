@@ -3,12 +3,14 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from harvester.api.auth import is_authorized
 from harvester.api.capacity import CapacityLimiter
@@ -89,6 +91,9 @@ def _custom_openapi() -> dict[str, Any]:
 
 
 app.openapi = _custom_openapi  # type: ignore[method-assign]
+
+_static_dir = Path(__file__).parent / "static" / "app"
+app.mount("/app", StaticFiles(directory=_static_dir, html=True), name="app")
 
 
 @app.middleware("http")
