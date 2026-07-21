@@ -17,14 +17,24 @@ from playwright.async_api import (
     TimeoutError as PWTimeoutError,
     async_playwright,
 )
+from playwright_stealth import Stealth
 
 from .config import Config, load_config
 from .detection import detect_challenge, detect_protection
 from .models import HarvestRequest, HarvestResponse
 from .security import assert_safe_url
-from .stealth_compat import apply_stealth, stealth_context_kwargs
 
 logger = logging.getLogger("harvester")
+
+# The fork adds a notification_permission evasion on top of upstream 2.x,
+# closing a headless-only inconsistency: Notification.permission='denied'
+# while permissions.query reports 'prompt'. WebGL vendor/renderer are
+# overridden here to present a real desktop Chrome/Windows GPU instead of
+# headless's SwiftShader software renderer.
+_stealth = Stealth(
+    webgl_vendor_override="Google Inc. (Intel)",
+    webgl_renderer_override="ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+)
 
 _LAUNCH_ARGS = [
     "--no-sandbox",
@@ -174,7 +184,6 @@ class Harvester:
             if not self.config.allow_caller_headers:
                 raise ValueError("caller-supplied extra_headers are disabled")
             context_kwargs["extra_http_headers"] = req.extra_headers
-        context_kwargs.update(stealth_context_kwargs())
         return context_kwargs
 
     async def _install_request_guards(self, page: Page, state: dict[str, Any]) -> None:
@@ -221,7 +230,7 @@ class Harvester:
         context = await self._browser.new_context(**self._context_kwargs(req))
         try:
             page = await context.new_page()
-            await apply_stealth(page)
+            await _stealth.apply_stealth_async(page)
             yield context, page
         finally:
             await context.close()

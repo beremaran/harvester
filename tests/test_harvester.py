@@ -69,12 +69,12 @@ async def test_isolation_between_requests(harvester, target_server):
 
 async def test_stealth_is_active_and_hides_webdriver(harvester, target_server):
     # Stealth must patch the classic navigator.webdriver automation tell.
-    from app.stealth_compat import apply_stealth
+    from app.harvester import _stealth
 
     ctx = await harvester._browser.new_context()
     try:
         page = await ctx.new_page()
-        await apply_stealth(page)
+        await _stealth.apply_stealth_async(page)
         await page.goto(target_server)
         webdriver = await page.evaluate("() => navigator.webdriver")
         assert webdriver in (False, None), f"navigator.webdriver leaked: {webdriver!r}"
