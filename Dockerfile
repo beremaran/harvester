@@ -1,6 +1,7 @@
-# Single-image cookie/session harvester.
+# Cookie/session harvester production image.
 # Base image ships Chromium + all system deps matching the pinned Playwright.
-FROM mcr.microsoft.com/playwright/python:v1.61.0-noble AS base
+# For tests, see Dockerfile.test.
+FROM mcr.microsoft.com/playwright/python:v1.61.0-noble
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV PYTHONUNBUFFERED=1 \
@@ -23,14 +24,3 @@ EXPOSE 8080
 
 # Runtime default: serve the API.
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8080}\""]
-
-# ---------------------------------------------------------------------------
-# Test stage: adds dev deps + tests. Build with `--target test` to run them.
-FROM base AS test
-
-RUN uv sync --locked
-
-COPY tests ./tests
-COPY pytest.ini .
-
-CMD ["pytest", "-v", "tests"]

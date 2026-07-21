@@ -1,8 +1,8 @@
 # Harvester test harness.
 #
 # Everything runs INSIDE the container (Chromium + pinned Playwright live there;
-# there is no host venv). These targets build the Dockerfile's `test` stage and
-# run pytest in it. The live anti-bot/fingerprint tests need outbound network and
+# there is no host venv). These targets build Dockerfile.test and run pytest in
+# it. The live anti-bot/fingerprint tests need outbound network and
 # opt in via RUN_LIVE_TESTS=1 (Docker allows egress by default).
 #
 #   make test            # offline suite, no network
@@ -34,12 +34,12 @@ help: ## Show this help
 	@echo "  \033[36mlive-<target>\033[0m    Run one live target (make live-list to see tokens)"
 
 .PHONY: build
-build: ## Build the runtime image (base stage)
-	$(DOCKER) build --target base -t $(RUN_IMAGE) .
+build: ## Build the runtime image
+	$(DOCKER) build -t $(RUN_IMAGE) .
 
 .PHONY: build-test
-build-test: ## Build the test image (test stage)
-	$(DOCKER) build --target test -t $(TEST_IMAGE) .
+build-test: ## Build the test image
+	$(DOCKER) build -f Dockerfile.test -t $(TEST_IMAGE) .
 
 .PHONY: run
 run: build ## Run the API on :8080

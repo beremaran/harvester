@@ -1,0 +1,23 @@
+# Test image: builds on the base app image, adds dev deps + tests.
+# Build with: docker build -f Dockerfile.test -t harvester-test .
+FROM mcr.microsoft.com/playwright/python:v1.61.0-noble
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /srv
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev
+RUN uv sync --locked
+
+COPY app ./app
+COPY tests ./tests
+COPY pytest.ini .
+
+ENV PATH="/srv/.venv/bin:${PATH}"
+
+CMD ["pytest", "-v", "tests"]
