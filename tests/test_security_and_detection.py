@@ -1,4 +1,5 @@
 """Unit coverage for the imported security and protection-detection boundary."""
+
 import pytest
 
 from harvester.config import Config, host_is_allowed, parse_bypass_headers, validate_config
@@ -15,9 +16,9 @@ def test_allowlist_and_private_network_detection():
 
 
 def test_bypass_headers_are_exact_host_safe_x_headers():
-    assert parse_bypass_headers(
-        '{"Capture.Example.com.":{"X-Harvester-Bypass":"secret"}}'
-    ) == {"capture.example.com": {"x-harvester-bypass": "secret"}}
+    assert parse_bypass_headers('{"Capture.Example.com.":{"X-Harvester-Bypass":"secret"}}') == {
+        "capture.example.com": {"x-harvester-bypass": "secret"}
+    }
     with pytest.raises(ValueError, match="safe custom"):
         parse_bypass_headers('{"example.com":{"authorization":"secret"}}')
     with pytest.raises(ValueError, match="single-line"):

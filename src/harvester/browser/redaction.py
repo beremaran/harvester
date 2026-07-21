@@ -1,4 +1,5 @@
 """Secret redaction for cookies, storage, and HTTP headers."""
+
 from typing import Any
 
 from harvester.config import Config
@@ -9,11 +10,7 @@ def redact(value: Any, expose: bool) -> str:
 
 
 def bypass_header_names(config: Config) -> set[str]:
-    return {
-        name.lower()
-        for headers in (config.bypass_headers_by_host or {}).values()
-        for name in headers
-    }
+    return {name.lower() for headers in (config.bypass_headers_by_host or {}).values() for name in headers}
 
 
 def redact_request_headers(headers: dict[str, Any], include_secrets: bool, config: Config) -> dict[str, str]:
@@ -50,9 +47,7 @@ _SCRAPER_HEADER_NAMES = (
 )
 
 
-def build_scraper_headers(
-    request_headers: dict[str, Any], cookie_header: str, include_secrets: bool
-) -> dict[str, str]:
+def build_scraper_headers(request_headers: dict[str, Any], cookie_header: str, include_secrets: bool) -> dict[str, str]:
     normalized = {str(name).lower(): str(value) for name, value in (request_headers or {}).items()}
     result = {name: normalized[name] for name in _SCRAPER_HEADER_NAMES if name in normalized}
     if include_secrets and cookie_header:

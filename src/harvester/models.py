@@ -1,4 +1,5 @@
 """Request/response schemas for the harvester API."""
+
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -71,9 +72,7 @@ class HarvestRequest(BaseModel):
         default="networkidle",
         description="Playwright navigation wait condition",
     )
-    timeout_ms: int = Field(
-        default=45_000, ge=1_000, le=180_000, description="Navigation timeout in milliseconds"
-    )
+    timeout_ms: int = Field(default=45_000, ge=1_000, le=180_000, description="Navigation timeout in milliseconds")
     wait_for_selector: str | None = Field(
         default=None,
         description="Optional CSS selector to wait for after navigation (useful past a challenge)",

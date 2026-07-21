@@ -1,4 +1,5 @@
 """API-level tests hitting the FastAPI app through an in-process ASGI transport."""
+
 import httpx
 import pytest
 import pytest_asyncio

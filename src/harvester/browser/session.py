@@ -1,14 +1,16 @@
 """Playwright browser process lifecycle and per-request stealth contexts."""
+
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
+from harvester.browser.stealth import DEFAULT_UA, LAUNCH_ARGS, stealth
 from harvester.config import Config
 from harvester.models import HarvestRequest
-from harvester.browser.stealth import DEFAULT_UA, LAUNCH_ARGS, stealth
 
 logger = logging.getLogger("harvester")
 

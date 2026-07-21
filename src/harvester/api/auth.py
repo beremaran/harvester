@@ -1,4 +1,5 @@
 """Bearer-token authorization against the configured API key."""
+
 from fastapi import Request
 
 from harvester.config import Config

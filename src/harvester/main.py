@@ -1,4 +1,5 @@
 """FastAPI service exposing the authenticated stealth capture API."""
+
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -75,7 +76,7 @@ async def _run_harvest(request: Request, req: HarvestRequest, *, capture_style: 
             if not result.ok:
                 return JSONResponse(status_code=status, content=result.model_dump())
             return result
-        except Exception as exc:  # noqa: BLE001 - keep API failures structured
+        except Exception as exc:
             logger.exception("unexpected harvest error")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 

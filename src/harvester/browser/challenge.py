@@ -1,7 +1,10 @@
 """Polling loop that waits out known anti-bot interstitials."""
+
+import contextlib
 import time
 
-from playwright.async_api import Page, TimeoutError as PWTimeoutError
+from playwright.async_api import Page
+from playwright.async_api import TimeoutError as PWTimeoutError
 
 from harvester.detection import detect_challenge
 from harvester.models import HarvestRequest, HarvestResponse
@@ -14,7 +17,7 @@ async def await_challenge(page: Page, req: HarvestRequest, resp: HarvestResponse
         try:
             html = await page.content()
             title = await page.title()
-        except Exception:  # noqa: BLE001 - navigation may still be in flight
+        except Exception:
             await page.wait_for_timeout(500)
             if time.monotonic() >= deadline:
                 break
@@ -31,7 +34,5 @@ async def await_challenge(page: Page, req: HarvestRequest, resp: HarvestResponse
             resp.challenge_cleared = False
             break
         await page.wait_for_timeout(1000)
-        try:
+        with contextlib.suppress(PWTimeoutError):
             await page.wait_for_load_state("networkidle", timeout=3000)
-        except PWTimeoutError:
-            pass

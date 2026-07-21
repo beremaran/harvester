@@ -1,4 +1,5 @@
 """Per-request network enforcement: URL safety, WAF bypass headers, header capture."""
+
 import logging
 from typing import Any
 from urllib.parse import urlsplit
@@ -40,7 +41,7 @@ class RequestGuard:
                 headers = await request.all_headers()
                 try:
                     main_frame_navigation = request.is_navigation_request() and request.frame == page.main_frame
-                except Exception:  # noqa: BLE001 - detached frames can disappear during redirects
+                except Exception:
                     main_frame_navigation = False
 
                 bypass = (self.config.bypass_headers_by_host or {}).get(
@@ -56,7 +57,7 @@ class RequestGuard:
                     await route.continue_()
                 if main_frame_navigation:
                     state["latest_request_headers"] = dict(headers)
-            except Exception as exc:  # noqa: BLE001 - security boundary failures abort the request
+            except Exception as exc:
                 logger.debug("aborting browser request %s: %s", request.url, exc)
                 await route.abort("blockedbyclient")
 

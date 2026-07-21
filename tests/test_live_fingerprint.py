@@ -28,11 +28,12 @@ you've seen its real response from your egress IP.
 Run one target at a time with the Makefile, e.g. ``make live-rebrowser`` or
 ``make live-tls`` (maps to ``pytest -m live -k <target>``).
 """
+
 import json
 
 import pytest
-
-from playwright.async_api import Error as PWError, TimeoutError as PWTimeoutError
+from playwright.async_api import Error as PWError
+from playwright.async_api import TimeoutError as PWTimeoutError
 
 from harvester.browser import DEFAULT_UA
 from harvester.models import HarvestRequest
@@ -54,7 +55,7 @@ async def _goto(page, url: str, *, timeout: int = 45_000, wait_until: str = "dom
 async def _inner_text(page) -> str:
     try:
         return await page.evaluate("() => document.body ? document.body.innerText : ''")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         pytest.skip(f"could not read page text ({type(exc).__name__}: {exc})")
 
 
@@ -154,9 +155,7 @@ async def test_creepjs_reports_no_bot(harvester):
     if "trust score" not in text.lower() and "fingerprint" not in text.lower():
         pytest.skip("CreepJS report did not render (page shape changed / blocked)")
 
-    assert signals["webdriver"] in (False, None), (
-        f"navigator.webdriver leaked on CreepJS: {signals['webdriver']!r}"
-    )
+    assert signals["webdriver"] in (False, None), f"navigator.webdriver leaked on CreepJS: {signals['webdriver']!r}"
     assert "HeadlessChrome" not in signals["ua"], f"headless UA leaked: {signals['ua']}"
     assert not signals["seleniumGlobals"], f"selenium globals present: {signals['seleniumGlobals']}"
     assert not signals["cdc"], "ChromeDriver cdc_ globals present on CreepJS"
@@ -205,11 +204,7 @@ async def test_iphey_trustworthy(harvester):
 
     # The verdict is shown on its own line; match only standalone verdict lines,
     # never the same words embedded in a sentence of marketing copy.
-    verdict_lines = {
-        line.strip().lower()
-        for line in text.splitlines()
-        if line.strip().lower() in _IPHEY_VERDICTS
-    }
+    verdict_lines = {line.strip().lower() for line in text.splitlines() if line.strip().lower() in _IPHEY_VERDICTS}
     if not verdict_lines:
         pytest.skip("iphey verdict not present (async render / IP-blocked)")
     assert "suspicious" not in verdict_lines and "not reliable" not in verdict_lines, (
@@ -233,12 +228,12 @@ async def test_tls_fingerprint_is_chrome_consistent(harvester):
         resp = await _goto(page, _TLS)
         try:
             body = await resp.text()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             pytest.skip(f"could not read TLS endpoint body ({type(exc).__name__}: {exc})")
 
     try:
         data = json.loads(body)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         data = None
 
     if data is None:
@@ -262,9 +257,7 @@ async def test_tls_fingerprint_is_chrome_consistent(harvester):
         )
 
     ua = data.get("user_agent") or ""
-    assert ua == DEFAULT_UA, (
-        f"UA at the TLS layer ({ua!r}) doesn't match the advertised UA ({DEFAULT_UA!r})"
-    )
+    assert ua == DEFAULT_UA, f"UA at the TLS layer ({ua!r}) doesn't match the advertised UA ({DEFAULT_UA!r})"
 
 
 # --- Cloudflare managed challenge -------------------------------------------

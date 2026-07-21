@@ -61,3 +61,13 @@ live-%: build-test
 .PHONY: live-list
 live-list: build-test ## List the live tests (names/keywords) without running them
 	$(TEST_RUN_LIVE) $(PYTEST) -m live --collect-only -q tests
+
+.PHONY: lint
+lint: build-test ## Check lint + formatting (no changes)
+	$(TEST_RUN) ruff check src tests
+	$(TEST_RUN) ruff format --check src tests
+
+.PHONY: lint-fix
+lint-fix: build-test ## Autofix lint issues and reformat (writes back to host)
+	$(DOCKER) run --rm --shm-size=$(SHM) -v $(CURDIR):/srv $(TEST_IMAGE) sh -c \
+	  "ruff check --fix src tests && ruff format src tests"

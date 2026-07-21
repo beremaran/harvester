@@ -1,4 +1,5 @@
 """In-page localStorage/sessionStorage readers."""
+
 import logging
 
 from playwright.async_api import Page
@@ -20,6 +21,6 @@ async def read_storage(page: Page, kind: str) -> dict[str, str]:
     }}"""
     try:
         return await page.evaluate(js)
-    except Exception as exc:  # noqa: BLE001 - storage is best effort
+    except Exception as exc:
         logger.debug("failed to read %s: %s", kind, exc)
         return {}

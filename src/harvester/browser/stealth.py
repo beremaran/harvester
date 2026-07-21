@@ -1,4 +1,5 @@
 """Stealth evasion profile and launch defaults shared across browser sessions."""
+
 from playwright_stealth import Stealth
 
 # The fork adds a notification_permission evasion on top of upstream 2.x,
@@ -24,6 +25,5 @@ LAUNCH_ARGS = [
 ]
 
 DEFAULT_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )

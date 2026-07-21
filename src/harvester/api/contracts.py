@@ -1,4 +1,5 @@
 """Response payload shaping for the legacy Node-service scraper contract."""
+
 from typing import Any
 
 from harvester.models import HarvestResponse

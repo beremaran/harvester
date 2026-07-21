@@ -1,10 +1,10 @@
 """Environment-backed service configuration and WAF bypass validation."""
+
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from os import environ
-from typing import Mapping
-
 
 _BLOCKED_BYPASS_HEADERS = re.compile(r"^(?:x-forwarded-|x-real-ip$|x-original-|x-rewrite-)")
 
@@ -29,7 +29,7 @@ def _read_secret(values: Mapping[str, str], name: str) -> str:
     """Read `<name>` from env, preferring `<name>_FILE` (Docker/Compose secrets) if set."""
     file_path = values.get(f"{name}_FILE")
     if file_path:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return f.read().strip()
     return values.get(name, "")
 
@@ -37,7 +37,7 @@ def _read_secret(values: Mapping[str, str], name: str) -> str:
 def _positive_int(value: str | None, fallback: int) -> int:
     try:
         parsed = int(value or "")
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return fallback
     return parsed if parsed > 0 else fallback
 
@@ -48,7 +48,7 @@ def _non_negative_int_or_unlimited(value: str | None, fallback: int) -> int:
         return 0
     try:
         parsed = int(value or "")
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return fallback
     return parsed if parsed >= 0 else fallback
 
@@ -67,13 +67,7 @@ def parse_bypass_headers(raw: str = "") -> dict[str, dict[str, str]]:
     result: dict[str, dict[str, str]] = {}
     for raw_host, raw_headers in value.items():
         host = str(raw_host).lower().removesuffix(".")
-        if (
-            not re.fullmatch(r"[a-z0-9.-]+", host)
-            or host.startswith(".")
-            or host.endswith(".")
-            or ".." in host
-            or host.startswith("*.")
-        ):
+        if not re.fullmatch(r"[a-z0-9.-]+", host) or host.startswith((".", "*.")) or host.endswith(".") or ".." in host:
             raise ValueError(f"invalid bypass hostname: {raw_host}")
         if not isinstance(raw_headers, dict):
             raise ValueError(f"bypass headers for {host} must be an object")
@@ -90,9 +84,7 @@ def parse_bypass_headers(raw: str = "") -> dict[str, dict[str, str]]:
                 or "\r" in raw_value
                 or "\n" in raw_value
             ):
-                raise ValueError(
-                    f"bypass header {raw_name} must have a non-empty single-line string value"
-                )
+                raise ValueError(f"bypass header {raw_name} must have a non-empty single-line string value")
             headers[name] = raw_value
         if not headers:
             raise ValueError(f"bypass headers for {host} cannot be empty")
@@ -103,9 +95,7 @@ def parse_bypass_headers(raw: str = "") -> dict[str, dict[str, str]]:
 def load_config(env: Mapping[str, str] | None = None) -> Config:
     values = environ if env is None else env
     allowed_hosts = tuple(
-        host.strip().lower().removesuffix(".")
-        for host in values.get("ALLOWED_HOSTS", "").split(",")
-        if host.strip()
+        host.strip().lower().removesuffix(".") for host in values.get("ALLOWED_HOSTS", "").split(",") if host.strip()
     )
     return Config(
         port=_positive_int(values.get("PORT"), 8080),
@@ -142,6 +132,6 @@ def validate_config(config: Config) -> None:
         raise ValueError("API_KEY must be configured")
     if not config.allowed_hosts:
         raise ValueError("ALLOWED_HOSTS must contain at least one authorized hostname")
-    for host in (config.bypass_headers_by_host or {}):
+    for host in config.bypass_headers_by_host or {}:
         if not host_is_allowed(host, config.allowed_hosts):
             raise ValueError(f"bypass hostname {host} is not covered by ALLOWED_HOSTS")

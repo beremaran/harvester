@@ -1,4 +1,5 @@
 """URL, DNS, private-network, and proxy validation."""
+
 import asyncio
 import ipaddress
 import socket

@@ -1,7 +1,8 @@
 """In-flight request capacity limiter, enforcing ``max_concurrency``."""
+
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 
 class CapacityLimiter:

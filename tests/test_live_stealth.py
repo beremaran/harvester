@@ -10,9 +10,10 @@ resulting page the way a fingerprinter would.
 A live site being unreachable (timeout / connection reset / gateway error) skips
 the test rather than failing it; only a genuine *detection* is a failure.
 """
-import pytest
 
-from playwright.async_api import Error as PWError, TimeoutError as PWTimeoutError
+import pytest
+from playwright.async_api import Error as PWError
+from playwright.async_api import TimeoutError as PWTimeoutError
 
 from harvester.models import HarvestRequest
 
@@ -40,13 +41,13 @@ async def _goto(page, url: str, *, timeout: int = 45_000):
 # automation. A real browser leaves every one of these green ("passed"); if any
 # goes red ("failed"), stealth has been defeated.
 _CRITICAL_SANNYSOFT_ROWS = {
-    "WebDriver",              # navigator.webdriver
+    "WebDriver",  # navigator.webdriver
     "WebDriver Advanced",
-    "Chrome",                 # window.chrome present
-    "Permissions",            # Notification permission consistency
+    "Chrome",  # window.chrome present
+    "Permissions",  # Notification permission consistency
     "Plugins Length",
     "Plugins is of type PluginArray",
-    "HEADCHR_UA",             # HeadlessChrome in UA
+    "HEADCHR_UA",  # HeadlessChrome in UA
     "HEADCHR_CHROME_OBJ",
     "HEADCHR_PERMISSIONS",
     "HEADCHR_PLUGINS",
@@ -88,9 +89,7 @@ async def test_sannysoft_reports_no_automation(harvester):
     assert rows, "sannysoft returned no result rows (page shape changed?)"
 
     failures = {
-        label: rows[label]
-        for label in _CRITICAL_SANNYSOFT_ROWS
-        if label in rows and "failed" in rows[label]["cls"]
+        label: rows[label] for label in _CRITICAL_SANNYSOFT_ROWS if label in rows and "failed" in rows[label]["cls"]
     }
     assert not failures, f"sannysoft flagged automation: {failures}"
 
@@ -140,24 +139,19 @@ async def test_no_direct_automation_tells(harvester):
             }"""
         )
 
-    assert signals["webdriver"] in (False, None), (
-        f"navigator.webdriver leaked: {signals['webdriver']!r}"
-    )
+    assert signals["webdriver"] in (False, None), f"navigator.webdriver leaked: {signals['webdriver']!r}"
     assert "HeadlessChrome" not in signals["ua"], f"headless UA leaked: {signals['ua']}"
     assert signals["pluginsLen"] > 0, "navigator.plugins is empty (headless tell)"
     assert signals["languages"], "navigator.languages is empty (headless tell)"
     assert signals["hasChrome"], "window.chrome missing (headless tell)"
     # Software-rendered WebGL ("SwiftShader"/"llvmpipe"/"Mesa OffScreen") is a
     # classic headless giveaway; a real desktop reports a hardware/ANGLE GPU.
-    assert not any(
-        tell in signals["webglRenderer"]
-        for tell in ("SwiftShader", "llvmpipe", "Mesa OffScreen")
-    ), f"software WebGL renderer leaked: {signals['webglRenderer']}"
-    # Headless leaks permission 'denied' while Notification.permission is 'default'.
-    assert not (
-        signals["permState"] == "denied" and signals["notifPerm"] == "default"
-    ), f"permission/Notification mismatch: {signals['permState']} vs {signals['notifPerm']}"
-    assert not signals["cdc"], "ChromeDriver cdc_ globals present"
-    assert not signals["seleniumGlobals"], (
-        f"selenium/webdriver globals present: {signals['seleniumGlobals']}"
+    assert not any(tell in signals["webglRenderer"] for tell in ("SwiftShader", "llvmpipe", "Mesa OffScreen")), (
+        f"software WebGL renderer leaked: {signals['webglRenderer']}"
     )
+    # Headless leaks permission 'denied' while Notification.permission is 'default'.
+    assert not (signals["permState"] == "denied" and signals["notifPerm"] == "default"), (
+        f"permission/Notification mismatch: {signals['permState']} vs {signals['notifPerm']}"
+    )
+    assert not signals["cdc"], "ChromeDriver cdc_ globals present"
+    assert not signals["seleniumGlobals"], f"selenium/webdriver globals present: {signals['seleniumGlobals']}"

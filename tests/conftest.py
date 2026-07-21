@@ -4,6 +4,7 @@ so the whole suite runs inside the container with no external network.
 A shared, session-scoped Harvester (one browser process) is also provided here,
 plus the gate that keeps the opt-in ``live`` fingerprinting tests from running
 unless RUN_LIVE_TESTS=1."""
+
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -66,7 +67,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_GET(self):  # noqa: N802 - stdlib naming
+    def do_GET(self):
         if self.path.startswith("/bypass"):
             if self.headers.get("x-harvester-bypass") != "test-secret":
                 self.send_response(403)

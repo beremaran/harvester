@@ -1,7 +1,9 @@
 """Non-secret WAF and anti-bot protection marker detection."""
+
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping
+from typing import Any
 
 Headers = Mapping[str, str]
 Detector = Callable[[Headers, list[str], str], list[str]]
@@ -13,13 +15,16 @@ _BLOCK_STATUSES = {401, 403, 429, 503}
 def _header_present(*names: str) -> Detector:
     def check(headers: Headers, _cookies: list[str], _body: str) -> list[str]:
         return [f"header:{name}" for name in names if name in headers]
+
     return check
 
 
 def _header_matches(header: str, pattern: str, marker: str) -> Detector:
     regex = re.compile(pattern)
+
     def check(headers: Headers, _cookies: list[str], _body: str) -> list[str]:
         return [marker] if regex.search(headers.get(header, "")) else []
+
     return check
 
 
@@ -28,26 +33,32 @@ def _header_prefix(prefix: str, marker: str, *extra_names: str) -> Detector:
         if any(name.startswith(prefix) for name in headers) or any(name in headers for name in extra_names):
             return [marker]
         return []
+
     return check
 
 
 def _cookie_matches(pattern: str, marker: str) -> Detector:
     regex = re.compile(pattern)
+
     def check(_headers: Headers, cookies: list[str], _body: str) -> list[str]:
         return [marker] if any(regex.match(name) for name in cookies) else []
+
     return check
 
 
 def _cookie_contains(name: str, marker: str) -> Detector:
     def check(_headers: Headers, cookies: list[str], _body: str) -> list[str]:
         return [marker] if name in cookies else []
+
     return check
 
 
 def _body_contains(pattern: str, marker: str) -> Detector:
     regex = re.compile(pattern)
+
     def check(_headers: Headers, _cookies: list[str], body: str) -> list[str]:
         return [marker] if regex.search(body) else []
+
     return check
 
 
@@ -80,7 +91,10 @@ _PROVIDERS = [
             _header_matches("server", r"cloudflare", "header:server-cloudflare"),
             _header_matches("cf-mitigated", r"challenge", "header:cf-mitigated"),
             _cookie_matches(r"^(?:__cf|cf_)", "cookie:cloudflare"),
-            _body_contains(r"cdn-cgi/challenge-platform|cf-chl-|cf-browser-verification|<title[^>]*>\s*just a moment", "html:cloudflare-challenge"),
+            _body_contains(
+                r"cdn-cgi/challenge-platform|cf-chl-|cf-browser-verification|<title[^>]*>\s*just a moment",
+                "html:cloudflare-challenge",
+            ),
         ],
         challenge=_any_challenge(
             _body_matches(r"cdn-cgi/challenge-platform|cf-chl-|cf-browser-verification|<title[^>]*>\s*just a moment"),
@@ -94,9 +108,14 @@ _PROVIDERS = [
             _header_matches("x-cdn", r"imperva|incapsula", "header:x-cdn-imperva"),
             _cookie_matches(r"^(?:visid_incap_|incap_ses_|nlbi_|reese84$|___utmvc$)", "cookie:imperva"),
             _body_contains(r"/_incapsula_resource", "html:incapsula-resource"),
-            _body_contains(r"incapsula incident id|request unsuccessful[^<]*incapsula|imperva[^<]*(?:access denied|blocked)", "html:imperva-block"),
+            _body_contains(
+                r"incapsula incident id|request unsuccessful[^<]*incapsula|imperva[^<]*(?:access denied|blocked)",
+                "html:imperva-block",
+            ),
         ],
-        challenge=_body_matches(r"incapsula incident id|request unsuccessful[^<]*incapsula|imperva[^<]*(?:access denied|blocked)"),
+        challenge=_body_matches(
+            r"incapsula incident id|request unsuccessful[^<]*incapsula|imperva[^<]*(?:access denied|blocked)"
+        ),
     ),
     ProviderSpec(
         name="akamai",
@@ -104,7 +123,9 @@ _PROVIDERS = [
             _header_matches("server", r"akamaighost", "header:server-akamaighost"),
             _header_prefix("x-akamai-", "header:akamai", "akamai-grn"),
             _cookie_matches(r"^(?:_abck|ak_bmsc|bm_sv|bm_sz)$", "cookie:akamai"),
-            _body_contains(r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)", "html:akamai-block"),
+            _body_contains(
+                r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)", "html:akamai-block"
+            ),
         ],
         challenge=_body_matches(r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)"),
     ),
@@ -180,7 +201,9 @@ def detect_challenge(html: str = "", title: str = "") -> bool:
     return any(spec.challenge({}, body) for spec in _PROVIDERS)
 
 
-def _evaluate(spec: ProviderSpec, headers: Headers, cookies: list[str], body: str, status: int | None) -> dict[str, Any] | None:
+def _evaluate(
+    spec: ProviderSpec, headers: Headers, cookies: list[str], body: str, status: int | None
+) -> dict[str, Any] | None:
     markers = [marker for detector in spec.detectors for marker in detector(headers, cookies, body)]
     if not markers:
         return None
@@ -195,17 +218,18 @@ def _evaluate(spec: ProviderSpec, headers: Headers, cookies: list[str], body: st
 
 
 def detect_protection(
-    *, status: int | None = None, headers: Mapping[str, Any] | None = None,
-    cookies: list[Mapping[str, Any]] | None = None, html: str = "",
+    *,
+    status: int | None = None,
+    headers: Mapping[str, Any] | None = None,
+    cookies: list[Mapping[str, Any]] | None = None,
+    html: str = "",
 ) -> dict[str, Any]:
     normalized_headers = {str(name).lower(): str(value).lower() for name, value in (headers or {}).items()}
     cookie_names = [str(cookie.get("name", "")).lower() for cookie in (cookies or [])]
     body = str(html)[:250_000].lower()
 
     providers = [
-        match
-        for spec in _PROVIDERS
-        if (match := _evaluate(spec, normalized_headers, cookie_names, body, status))
+        match for spec in _PROVIDERS if (match := _evaluate(spec, normalized_headers, cookie_names, body, status))
     ]
 
     return {

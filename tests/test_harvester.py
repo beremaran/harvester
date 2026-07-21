@@ -1,4 +1,5 @@
 """Unit-level tests driving the Harvester directly against the local server."""
+
 import pytest
 
 from harvester.models import HarvestRequest
@@ -99,9 +100,7 @@ async def test_bad_proxy_surfaces_error(harvester, target_server):
 
 
 async def test_include_secrets_returns_scraper_cookie_header(harvester, target_server):
-    resp = await harvester.harvest(
-        HarvestRequest(url=target_server, include_secrets=True, return_html=True)
-    )
+    resp = await harvester.harvest(HarvestRequest(url=target_server, include_secrets=True, return_html=True))
     assert resp.ok, resp.error
     assert resp.secrets_included is True
     assert resp.cookies[0]["value"] == "cookievalue123"

@@ -1,22 +1,31 @@
 """Harvest orchestration: composes the browser session, request guard, and
 challenge/redaction helpers into the single-page capture contract."""
+
 import base64
 import logging
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 from urllib.parse import urlsplit
 
 from playwright.async_api import (
     BrowserContext,
     Page,
     Response,
+)
+from playwright.async_api import (
     TimeoutError as PWTimeoutError,
 )
 
 from harvester.browser.challenge import await_challenge
-from harvester.browser.redaction import build_scraper_headers, redact, redact_request_headers, redact_response_headers, \
-    redacted_storage
+from harvester.browser.redaction import (
+    build_scraper_headers,
+    redact,
+    redact_request_headers,
+    redact_response_headers,
+    redacted_storage,
+)
 from harvester.browser.request_guard import RequestGuard, initial_guard_state
 from harvester.browser.session import BrowserSession
 from harvester.browser.storage import read_storage
@@ -86,7 +95,7 @@ class Harvester:
                 await self._populate_outputs(page, req, resp)
 
                 resp.ok = True
-        except Exception as exc:  # noqa: BLE001 - surface capture failures as structured JSON
+        except Exception as exc:
             logger.exception("harvest failed for %s", req.url)
             resp.ok = False
             resp.error = f"{type(exc).__name__}: {exc}"
@@ -95,14 +104,14 @@ class Harvester:
         return resp
 
     async def _navigate(
-            self, page: Page, req: HarvestRequest, resp: HarvestResponse, state: dict[str, Any], target: str
+        self, page: Page, req: HarvestRequest, resp: HarvestResponse, state: dict[str, Any], target: str
     ) -> Response | None:
         def remember_response(candidate: Response) -> None:
             try:
                 request = candidate.request
                 if request.is_navigation_request() and request.frame == page.main_frame:
                     state["latest_navigation_response"] = candidate
-            except Exception:  # noqa: BLE001 - response may outlive its frame
+            except Exception:
                 return
 
         page.on("response", remember_response)
@@ -134,38 +143,33 @@ class Harvester:
     async def _safe_title(self, page: Page) -> str | None:
         try:
             return await page.title()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     async def _populate_browser_state(
-            self, page: Page, resp: HarvestResponse, raw_cookies: list[dict[str, Any]], include_secrets: bool
+        self, page: Page, resp: HarvestResponse, raw_cookies: list[dict[str, Any]], include_secrets: bool
     ) -> None:
-        resp.cookies = [
-            {**cookie, "value": redact(cookie.get("value", ""), include_secrets)}
-            for cookie in raw_cookies
-        ]
+        resp.cookies = [{**cookie, "value": redact(cookie.get("value", ""), include_secrets)} for cookie in raw_cookies]
         local_storage = await read_storage(page, "localStorage")
         session_storage = await read_storage(page, "sessionStorage")
         resp.local_storage = redacted_storage(local_storage, include_secrets)
         resp.session_storage = redacted_storage(session_storage, include_secrets)
 
     async def _populate_network_state(
-            self,
-            page: Page,
-            context: BrowserContext,
-            target: str,
-            state: dict[str, Any],
-            nav_response: Response | None,
-            raw_cookies: list[dict[str, Any]],
-            resp: HarvestResponse,
-            include_secrets: bool,
+        self,
+        page: Page,
+        context: BrowserContext,
+        target: str,
+        state: dict[str, Any],
+        nav_response: Response | None,
+        raw_cookies: list[dict[str, Any]],
+        resp: HarvestResponse,
+        include_secrets: bool,
     ) -> None:
         detection_html = ""
         try:
-            detection_html = await page.evaluate(
-                "() => document.documentElement?.outerHTML.slice(0, 250000) ?? ''"
-            )
-        except Exception as exc:  # noqa: BLE001
+            detection_html = await page.evaluate("() => document.documentElement?.outerHTML.slice(0, 250000) ?? ''")
+        except Exception as exc:
             logger.debug("failed to read detection HTML: %s", exc)
 
         final_response = state["latest_navigation_response"] or nav_response
@@ -173,7 +177,7 @@ class Harvester:
             resp.final_status = final_response.status
             try:
                 raw_response_headers = await final_response.all_headers()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 raw_response_headers = {}
         else:
             raw_response_headers = {}
@@ -181,17 +185,11 @@ class Harvester:
         cookie_header = ""
         if include_secrets and resp.final_url and urlsplit(resp.final_url).scheme in {"http", "https"}:
             page_cookies = await context.cookies([resp.final_url])
-            cookie_header = "; ".join(
-                f"{cookie['name']}={cookie['value']}" for cookie in page_cookies
-            )
+            cookie_header = "; ".join(f"{cookie['name']}={cookie['value']}" for cookie in page_cookies)
 
-        resp.request_headers = redact_request_headers(
-            state["latest_request_headers"], include_secrets, self.config
-        )
+        resp.request_headers = redact_request_headers(state["latest_request_headers"], include_secrets, self.config)
         resp.response_headers = redact_response_headers(raw_response_headers, self.config)
-        resp.scraper_headers = build_scraper_headers(
-            state["latest_request_headers"], cookie_header, include_secrets
-        )
+        resp.scraper_headers = build_scraper_headers(state["latest_request_headers"], cookie_header, include_secrets)
         host = (urlsplit(target).hostname or "").lower().removesuffix(".")
         resp.bypass = {
             "configured": host in (self.config.bypass_headers_by_host or {}),
