@@ -81,6 +81,16 @@ async def test_stealth_is_active_and_hides_webdriver(harvester, target_server):
         await ctx.close()
 
 
+async def test_client_hints_do_not_leak_headless(harvester, target_server):
+    resp = await harvester.harvest(HarvestRequest(url=target_server))
+    assert resp.ok, resp.error
+
+    sec_ch_ua = resp.request_headers.get("sec-ch-ua", "")
+    assert "Headless" not in sec_ch_ua
+    assert "Headless" not in resp.request_headers.get("sec-ch-ua-platform", "")
+    assert resp.request_headers.get("sec-ch-ua-mobile") == "?0"
+
+
 async def test_invalid_url_rejected():
     with pytest.raises(ValueError):
         HarvestRequest(url="ftp://nope")

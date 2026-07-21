@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from playwright.async_api import Page
 
+from harvester.browser.stealth import client_hints_for_ua
 from harvester.config import Config
 from harvester.security import assert_safe_url
 
@@ -24,9 +25,10 @@ def initial_guard_state() -> dict[str, Any]:
 class RequestGuard:
     """Installs the route handler that enforces the allowlist and applies bypass headers."""
 
-    def __init__(self, config: Config, enforce_security: bool) -> None:
+    def __init__(self, config: Config, enforce_security: bool, user_agent: str) -> None:
         self.config = config
         self.enforce_security = enforce_security
+        self.client_hints = client_hints_for_ua(user_agent)
 
     async def install(self, page: Page, state: dict[str, Any]) -> None:
         async def handle(route: Any) -> None:
@@ -39,6 +41,10 @@ class RequestGuard:
                 if self.enforce_security:
                     await assert_safe_url(request.url, self.config)
                 headers = await request.all_headers()
+                if self.client_hints:
+                    for key, value in self.client_hints.items():
+                        if key in headers:
+                            headers[key] = value
                 try:
                     main_frame_navigation = request.is_navigation_request() and request.frame == page.main_frame
                 except Exception:
@@ -54,7 +60,7 @@ class RequestGuard:
                 else:
                     if bypass:
                         state["insecure_bypass_blocked"] = True
-                    await route.continue_()
+                    await route.continue_(headers=headers)
                 if main_frame_navigation:
                     state["latest_request_headers"] = dict(headers)
             except Exception as exc:

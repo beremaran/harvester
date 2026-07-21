@@ -28,6 +28,7 @@ from harvester.browser.redaction import (
 )
 from harvester.browser.request_guard import RequestGuard, initial_guard_state
 from harvester.browser.session import BrowserSession
+from harvester.browser.stealth import DEFAULT_UA
 from harvester.browser.storage import read_storage
 from harvester.config import Config, load_config
 from harvester.detection import detect_protection
@@ -78,7 +79,8 @@ class Harvester:
             )
             async with self.open_stealth_page(req) as (context, page):
                 if self.enforce_security:
-                    await RequestGuard(self.config, self.enforce_security).install(page, state)
+                    user_agent = req.user_agent or DEFAULT_UA
+                    await RequestGuard(self.config, self.enforce_security, user_agent).install(page, state)
 
                 nav_response = await self._navigate(page, req, resp, state, target)
                 await await_challenge(page, req, resp)
