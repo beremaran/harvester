@@ -1,8 +1,6 @@
 services:
   harvester:
-    build:
-      context: .
-      target: base
+    build: .
     image: harvester:latest
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
