@@ -27,9 +27,7 @@ from harvester.browser.redaction import (
     redact_response_headers,
     redacted_storage,
 )
-from harvester.browser.request_guard import RequestGuard, initial_guard_state
 from harvester.browser.session import BrowserSession
-from harvester.browser.stealth import DEFAULT_UA
 from harvester.browser.storage import read_storage
 from harvester.browser.timeouts import CDP_CALL_TIMEOUT_S, bounded
 from harvester.config import Config, load_config
@@ -71,7 +69,12 @@ class Harvester:
         started = time.monotonic()
         resp = HarvestResponse(ok=False, url=req.url)
         include_secrets = req.include_secrets and self.config.capture_secret_values
-        state = initial_guard_state()
+        state: dict[str, Any] = {
+            "latest_request_headers": {},
+            "latest_navigation_response": None,
+            "bypass_applied": False,
+            "insecure_bypass_blocked": False,
+        }
 
         try:
             target = await assert_safe_url(
@@ -81,10 +84,6 @@ class Harvester:
             )
             async with self.open_stealth_page(req) as (context, page):
                 try:
-                    if self.enforce_security:
-                        user_agent = req.user_agent or DEFAULT_UA
-                        await RequestGuard(self.config, self.enforce_security, user_agent).install(page, state)
-
                     nav_response = await self._navigate(page, req, resp, state, target)
                     await await_challenge(page, req, resp)
                     await self._apply_post_navigation_waits(page, req)
