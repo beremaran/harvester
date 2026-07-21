@@ -1,6 +1,7 @@
 """Harvest orchestration: composes the browser session, request guard, and
 challenge/redaction helpers into the single-page capture contract."""
 
+import asyncio
 import base64
 import logging
 import time
@@ -30,6 +31,7 @@ from harvester.browser.request_guard import RequestGuard, initial_guard_state
 from harvester.browser.session import BrowserSession
 from harvester.browser.stealth import DEFAULT_UA
 from harvester.browser.storage import read_storage
+from harvester.browser.timeouts import CDP_CALL_TIMEOUT_S, bounded
 from harvester.config import Config, load_config
 from harvester.detection import detect_protection
 from harvester.models import HarvestRequest, HarvestResponse
@@ -89,7 +91,7 @@ class Harvester:
                 resp.final_url = page.url
                 resp.title = await self._safe_title(page)
 
-                raw_cookies = await context.cookies()
+                raw_cookies = await bounded(context.cookies(), default=[], what="context.cookies()")
                 await self._populate_browser_state(page, resp, raw_cookies, include_secrets)
                 await self._populate_network_state(
                     page, context, target, state, nav_response, raw_cookies, resp, include_secrets
@@ -142,10 +144,7 @@ class Harvester:
             await page.wait_for_timeout(req.extra_wait_ms)
 
     async def _safe_title(self, page: Page) -> str | None:
-        try:
-            return await page.title()
-        except Exception:
-            return None
+        return await bounded(page.title(), default=None, what="page.title()")
 
     async def _populate_browser_state(
         self, page: Page, resp: HarvestResponse, raw_cookies: list[dict[str, Any]], include_secrets: bool
@@ -167,25 +166,26 @@ class Harvester:
         resp: HarvestResponse,
         include_secrets: bool,
     ) -> None:
-        detection_html = ""
-        try:
-            detection_html = await page.evaluate("() => document.documentElement?.outerHTML.slice(0, 250000) ?? ''")
-        except Exception as exc:
-            logger.debug("failed to read detection HTML: %s", exc)
+        detection_html = await bounded(
+            page.evaluate("() => document.documentElement?.outerHTML.slice(0, 250000) ?? ''"),
+            default="",
+            what="detection HTML evaluate()",
+        )
 
         final_response = state["latest_navigation_response"] or nav_response
         if final_response is not None:
             resp.final_status = final_response.status
-            try:
-                raw_response_headers = await final_response.all_headers()
-            except Exception:
-                raw_response_headers = {}
+            raw_response_headers = await bounded(
+                final_response.all_headers(), default={}, what="response.all_headers()"
+            )
         else:
             raw_response_headers = {}
 
         cookie_header = ""
         if include_secrets and resp.final_url and urlsplit(resp.final_url).scheme in {"http", "https"}:
-            page_cookies = await context.cookies([resp.final_url])
+            page_cookies = await bounded(
+                context.cookies([resp.final_url]), default=[], what="context.cookies([final_url])"
+            )
             cookie_header = "; ".join(f"{cookie['name']}={cookie['value']}" for cookie in page_cookies)
 
         resp.request_headers = redact_request_headers(state["latest_request_headers"], include_secrets, self.config)
@@ -207,10 +207,13 @@ class Harvester:
 
     async def _populate_outputs(self, page: Page, req: HarvestRequest, resp: HarvestResponse) -> None:
         if req.return_html:
-            html = await page.content()
+            try:
+                html = await asyncio.wait_for(page.content(), timeout=CDP_CALL_TIMEOUT_S)
+            except TimeoutError as exc:
+                raise ValueError("timed out reading rendered HTML from a wedged page") from exc
             if self.config.max_html_bytes and len(html.encode("utf-8")) > self.config.max_html_bytes:
                 raise ValueError("rendered HTML exceeds MAX_HTML_BYTES")
             resp.html = html
         if req.return_screenshot:
-            png = await page.screenshot(full_page=False)
+            png = await page.screenshot(full_page=False, timeout=req.timeout_ms or self.config.navigation_timeout_ms)
             resp.screenshot_b64 = base64.b64encode(png).decode("ascii")

@@ -6,6 +6,7 @@ import time
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PWTimeoutError
 
+from harvester.browser.timeouts import bounded
 from harvester.detection import detect_challenge
 from harvester.models import HarvestRequest, HarvestResponse
 
@@ -14,10 +15,9 @@ async def await_challenge(page: Page, req: HarvestRequest, resp: HarvestResponse
     deadline = time.monotonic() + (req.challenge_wait_ms / 1000.0)
     detected = False
     while True:
-        try:
-            html = await page.content()
-            title = await page.title()
-        except Exception:
+        html = await bounded(page.content(), default=None, what="challenge-poll content()")
+        title = await bounded(page.title(), default=None, what="challenge-poll title()") if html is not None else None
+        if html is None or title is None:
             await page.wait_for_timeout(500)
             if time.monotonic() >= deadline:
                 break

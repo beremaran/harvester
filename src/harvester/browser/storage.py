@@ -1,10 +1,8 @@
 """In-page localStorage/sessionStorage readers."""
 
-import logging
-
 from playwright.async_api import Page
 
-logger = logging.getLogger("harvester")
+from harvester.browser.timeouts import bounded
 
 
 async def read_storage(page: Page, kind: str) -> dict[str, str]:
@@ -19,8 +17,4 @@ async def read_storage(page: Page, kind: str) -> dict[str, str]:
             return out;
         }} catch (e) {{ return {{}}; }}
     }}"""
-    try:
-        return await page.evaluate(js)
-    except Exception as exc:
-        logger.debug("failed to read %s: %s", kind, exc)
-        return {}
+    return await bounded(page.evaluate(js), default={}, what=f"read {kind}")
