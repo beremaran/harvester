@@ -3,7 +3,7 @@
 import pytest
 
 from harvester.config import Config, host_is_allowed, parse_bypass_headers, validate_config
-from harvester.detection import detect_protection
+from harvester.detection import detect_challenge, detect_protection
 from harvester.security import is_private_address, parse_proxy
 
 
@@ -56,3 +56,16 @@ def test_protection_detection_reports_provider_without_secret_values():
     assert result["challengeDetected"] is True
     assert result["providers"][0]["name"] == "cloudflare"
     assert result["providers"][0]["confidence"] == "high"
+
+
+def test_akamai_pardon_our_interruption_interstitial_is_detected():
+    html = (
+        "<title>Pardon Our Interruption</title>"
+        "<h1>Pardon Our Interruption</h1>"
+        "<p>As you were browsing something about your browser made us think you were a bot.</p>"
+    )
+    assert detect_challenge(html=html, title="Pardon Our Interruption") is True
+
+    result = detect_protection(html=html)
+    assert result["challengeDetected"] is True
+    assert any(entry["name"] == "akamai" for entry in result["providers"])

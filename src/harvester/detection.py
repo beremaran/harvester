@@ -124,10 +124,15 @@ _PROVIDERS = [
             _header_prefix("x-akamai-", "header:akamai", "akamai-grn"),
             _cookie_matches(r"^(?:_abck|ak_bmsc|bm_sv|bm_sz)$", "cookie:akamai"),
             _body_contains(
-                r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)", "html:akamai-block"
+                r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)"
+                r"|pardon our interruption",
+                "html:akamai-block",
             ),
         ],
-        challenge=_body_matches(r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)"),
+        challenge=_body_matches(
+            r"access denied[^]*reference #[0-9a-f.]+|akamai[^<]*(?:bot manager|access denied)"
+            r"|pardon our interruption"
+        ),
     ),
     ProviderSpec(
         name="datadome",
