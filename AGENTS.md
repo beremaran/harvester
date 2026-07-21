@@ -3,12 +3,14 @@
 ## Project structure
 
 This repository contains a Python FastAPI service for authorized browser
-capture. Runtime code is in `app/`: `main.py` owns HTTP routes, authentication,
-limits, and lifecycle; `harvester.py` owns Playwright and stealth browser
-lifecycle, interception, state capture, and redaction; `config.py`,
-`security.py`, and `detection.py` provide configuration, URL/network validation,
-and WAF marker detection. Tests are in `tests/`, and `docs/` contains scraper
-integration guidance.
+capture. Runtime code is in `src/harvester/`: `main.py` owns HTTP routes,
+authentication, limits, and lifecycle; `harvester.py` owns Playwright and
+stealth browser lifecycle, delegating to `browser/` for interception, state
+capture, challenge waiting, and redaction; `config.py`, `security.py`, and
+`detection.py` provide configuration, URL/network validation, and WAF marker
+detection; `api/` holds auth, capacity limiting, and request/response
+contracts. Tests are in `tests/`, and `docs/` contains scraper integration
+guidance.
 
 ## Development
 

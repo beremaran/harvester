@@ -15,7 +15,7 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
-COPY app ./app
+COPY src README.md ./
 RUN uv sync --locked --no-dev
 
 ENV PATH="/srv/.venv/bin:${PATH}"
@@ -23,4 +23,4 @@ ENV PATH="/srv/.venv/bin:${PATH}"
 EXPOSE 8080
 
 # Runtime default: serve the API.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8080}\""]
+CMD ["sh", "-c", "exec uvicorn harvester.main:app --host 0.0.0.0 --port \"${PORT:-8080}\""]

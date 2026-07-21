@@ -10,13 +10,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv
 
-COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev
-RUN uv sync --locked
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --locked --no-install-project --no-dev
+RUN uv sync --locked --no-install-project
 
-COPY app ./app
+COPY src ./src
 COPY tests ./tests
 COPY pytest.ini .
+
+RUN uv sync --locked
 
 ENV PATH="/srv/.venv/bin:${PATH}"
 

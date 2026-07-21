@@ -28,16 +28,14 @@ you've seen its real response from your egress IP.
 Run one target at a time with the Makefile, e.g. ``make live-rebrowser`` or
 ``make live-tls`` (maps to ``pytest -m live -k <target>``).
 """
-from __future__ import annotations
-
 import json
 
 import pytest
 
 from playwright.async_api import Error as PWError, TimeoutError as PWTimeoutError
 
-from app.harvester import _DEFAULT_UA
-from app.models import HarvestRequest
+from harvester.browser import DEFAULT_UA
+from harvester.models import HarvestRequest
 
 pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
@@ -248,7 +246,7 @@ async def test_tls_fingerprint_is_chrome_consistent(harvester):
         low = body.lower()
         if "ja3" not in low:
             pytest.skip("TLS endpoint returned an unrecognized body")
-        assert _DEFAULT_UA in body, "advertised Chrome UA not reflected at the TLS layer"
+        assert DEFAULT_UA in body, "advertised Chrome UA not reflected at the TLS layer"
         for key in ("ja3", "ja4", "akamai"):
             assert key in low, f"missing {key} fingerprint in TLS response"
         return
@@ -264,8 +262,8 @@ async def test_tls_fingerprint_is_chrome_consistent(harvester):
         )
 
     ua = data.get("user_agent") or ""
-    assert ua == _DEFAULT_UA, (
-        f"UA at the TLS layer ({ua!r}) doesn't match the advertised UA ({_DEFAULT_UA!r})"
+    assert ua == DEFAULT_UA, (
+        f"UA at the TLS layer ({ua!r}) doesn't match the advertised UA ({DEFAULT_UA!r})"
     )
 
 

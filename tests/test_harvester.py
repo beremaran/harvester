@@ -1,9 +1,7 @@
 """Unit-level tests driving the Harvester directly against the local server."""
-from __future__ import annotations
-
 import pytest
 
-from app.models import HarvestRequest
+from harvester.models import HarvestRequest
 
 # Keep the browser and every test on one shared event loop; a Playwright
 # connection created on one loop cannot be awaited from another. The shared
@@ -69,12 +67,12 @@ async def test_isolation_between_requests(harvester, target_server):
 
 async def test_stealth_is_active_and_hides_webdriver(harvester, target_server):
     # Stealth must patch the classic navigator.webdriver automation tell.
-    from app.harvester import _stealth
+    from harvester.browser.stealth import stealth
 
-    ctx = await harvester._browser.new_context()
+    ctx = await harvester.session._browser.new_context()
     try:
         page = await ctx.new_page()
-        await _stealth.apply_stealth_async(page)
+        await stealth.apply_stealth_async(page)
         await page.goto(target_server)
         webdriver = await page.evaluate("() => navigator.webdriver")
         assert webdriver in (False, None), f"navigator.webdriver leaked: {webdriver!r}"

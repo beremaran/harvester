@@ -1,13 +1,11 @@
 """URL, DNS, private-network, and proxy validation."""
-from __future__ import annotations
-
 import asyncio
 import ipaddress
 import socket
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from .config import Config, host_is_allowed
+from harvester.config import Config, host_is_allowed
 
 
 def is_private_address(address: str) -> bool:

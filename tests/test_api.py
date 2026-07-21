@@ -1,12 +1,10 @@
 """API-level tests hitting the FastAPI app through an in-process ASGI transport."""
-from __future__ import annotations
-
 import httpx
 import pytest
 import pytest_asyncio
 
-from app import main
-from app.main import app
+from harvester import main
+from harvester.main import app
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

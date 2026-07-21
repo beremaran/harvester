@@ -4,14 +4,14 @@ so the whole suite runs inside the container with no external network.
 A shared, session-scoped Harvester (one browser process) is also provided here,
 plus the gate that keeps the opt-in ``live`` fingerprinting tests from running
 unless RUN_LIVE_TESTS=1."""
-from __future__ import annotations
-
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import pytest_asyncio
+
+from harvester.browser import Harvester
 
 # Keep the in-process API tests on the same secure configuration as production,
 # while allowing their loopback target server.
@@ -20,8 +20,7 @@ os.environ.setdefault("ALLOWED_HOSTS", "127.0.0.1")
 os.environ.setdefault("ALLOW_PRIVATE_NETWORKS", "true")
 os.environ.setdefault("CAPTURE_SECRET_VALUES", "true")
 
-from app.config import load_config
-from app.harvester import Harvester
+from harvester.config import load_config
 
 # --- HTML fixtures the test server serves -----------------------------------
 

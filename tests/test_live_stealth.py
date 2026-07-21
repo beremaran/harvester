@@ -10,13 +10,11 @@ resulting page the way a fingerprinter would.
 A live site being unreachable (timeout / connection reset / gateway error) skips
 the test rather than failing it; only a genuine *detection* is a failure.
 """
-from __future__ import annotations
-
 import pytest
 
 from playwright.async_api import Error as PWError, TimeoutError as PWTimeoutError
 
-from app.models import HarvestRequest
+from harvester.models import HarvestRequest
 
 pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),

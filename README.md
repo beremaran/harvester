@@ -147,13 +147,13 @@ detection. Live tests are skipped unless `RUN_LIVE_TESTS=1`.
 ## Layout
 
 ```text
-app/main.py              FastAPI routes, auth, limits, lifecycle
-app/harvester.py         Stealth browser, interception, capture, redaction
-app/config.py            Environment configuration and bypass validation
-app/security.py          URL, DNS, private-network, and proxy validation
-app/detection.py         WAF/anti-bot marker detection
-app/models.py            Pydantic request/response schemas
-app/stealth_compat.py    playwright-stealth 1.x/2.x compatibility
-app/stealth_hardening.js Supplemental fingerprint hardening
-tests/                   Offline and opt-in live tests
+src/harvester/main.py          FastAPI routes, auth, limits, lifecycle
+src/harvester/harvester.py     Playwright orchestration, delegates to browser/
+src/harvester/config.py        Environment configuration and bypass validation
+src/harvester/security.py      URL, DNS, private-network, and proxy validation
+src/harvester/detection.py     WAF/anti-bot marker detection
+src/harvester/models.py        Pydantic request/response schemas
+src/harvester/api/             Auth, capacity limiting, request/response contracts
+src/harvester/browser/         Stealth, capture, challenge waiting, redaction, storage
+tests/                         Offline and opt-in live tests
 ```

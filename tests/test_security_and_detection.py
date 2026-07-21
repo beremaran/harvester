@@ -1,11 +1,9 @@
 """Unit coverage for the imported security and protection-detection boundary."""
-from __future__ import annotations
-
 import pytest
 
-from app.config import Config, host_is_allowed, parse_bypass_headers, validate_config
-from app.detection import detect_protection
-from app.security import is_private_address, parse_proxy
+from harvester.config import Config, host_is_allowed, parse_bypass_headers, validate_config
+from harvester.detection import detect_protection
+from harvester.security import is_private_address, parse_proxy
 
 
 def test_allowlist_and_private_network_detection():
