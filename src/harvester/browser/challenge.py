@@ -17,16 +17,26 @@ class PageUnresponsiveError(Exception):
     instead of burning the rest of the request budget on a wedged renderer."""
 
 
+MAX_CONSECUTIVE_STALLS = 3
+
+
 async def await_challenge(page: Page, req: HarvestRequest, resp: HarvestResponse) -> None:
     deadline = time.monotonic() + (req.challenge_wait_ms / 1000.0)
     detected = False
+    consecutive_stalls = 0
     while True:
         html = await bounded(page.content(), default=None, what="challenge-poll content()")
-        if html is None:
-            raise PageUnresponsiveError("page.content() timed out during challenge poll")
-        title = await bounded(page.title(), default=None, what="challenge-poll title()")
-        if title is None:
-            raise PageUnresponsiveError("page.title() timed out during challenge poll")
+        title = await bounded(page.title(), default=None, what="challenge-poll title()") if html is not None else None
+
+        if html is None or title is None:
+            consecutive_stalls += 1
+            if consecutive_stalls >= MAX_CONSECUTIVE_STALLS or time.monotonic() >= deadline:
+                raise PageUnresponsiveError(
+                    f"page stopped answering CDP calls during challenge poll after {consecutive_stalls} stall(s)"
+                )
+            await page.wait_for_timeout(1000)
+            continue
+        consecutive_stalls = 0
 
         if not detect_challenge(html, title):
             if detected:
