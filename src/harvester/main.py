@@ -10,7 +10,6 @@ from fastapi.responses import JSONResponse
 
 from harvester.api.auth import is_authorized
 from harvester.api.capacity import CapacityLimiter
-from harvester.api.contracts import to_capture_payload
 from harvester.browser import Harvester
 from harvester.config import Config, load_config, validate_config
 from harvester.models import HarvestRequest, HarvestResponse
@@ -61,7 +60,7 @@ async def request_size_limit(request: Request, call_next: Any):
     return await call_next(request)
 
 
-async def _run_harvest(request: Request, req: HarvestRequest, *, capture_style: bool):
+async def _run_harvest(request: Request, req: HarvestRequest):
     if not is_authorized(request, config):
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
     async with capacity.slot() as reserved:
@@ -70,11 +69,8 @@ async def _run_harvest(request: Request, req: HarvestRequest, *, capture_style: 
         try:
             logger.info("harvest request url=%s proxy=%s", req.url, bool(req.proxy))
             result = await harvester.harvest(req)
-            status = 200 if result.ok else 502
-            if capture_style:
-                return JSONResponse(status_code=status, content=to_capture_payload(result))
             if not result.ok:
-                return JSONResponse(status_code=status, content=result.model_dump())
+                return JSONResponse(status_code=502, content=result.model_dump())
             return result
         except Exception as exc:
             logger.exception("unexpected harvest error")
@@ -90,9 +86,4 @@ async def health() -> dict[str, object]:
 
 @app.post("/harvest", response_model=HarvestResponse)
 async def harvest(request: Request, req: HarvestRequest):
-    return await _run_harvest(request, req, capture_style=False)
-
-
-@app.post("/v1/capture")
-async def capture(request: Request, req: HarvestRequest):
-    return await _run_harvest(request, req, capture_style=True)
+    return await _run_harvest(request, req)

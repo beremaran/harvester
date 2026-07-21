@@ -3,7 +3,7 @@
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProxyConfig(BaseModel):
@@ -52,20 +52,13 @@ class HarvestRequest(BaseModel):
     url: str = Field(..., description="Target URL to load and harvest from")
     proxy: ProxyConfig | None = Field(default=None, description="Optional proxy configuration")
 
-    return_html: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("return_html", "include_html", "includeHtml"),
-        description="Include the fully rendered HTML in the response",
-    )
+    return_html: bool = Field(default=False, description="Include the fully rendered HTML in the response")
     include_secrets: bool = Field(
         default=False,
-        validation_alias=AliasChoices("include_secrets", "includeSecrets"),
         description="Request cookie/storage/header values when the operator permits it",
     )
     return_screenshot: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("return_screenshot", "include_screenshot", "returnScreenshot"),
-        description="Include a base64-encoded PNG screenshot in the response",
+        default=False, description="Include a base64-encoded PNG screenshot in the response"
     )
 
     wait_until: Literal["load", "domcontentloaded", "networkidle", "commit"] = Field(
@@ -82,13 +75,6 @@ class HarvestRequest(BaseModel):
         ge=0,
         le=120_000,
         description="Extra idle wait after load, giving anti-bot challenges time to resolve",
-    )
-    wait_for_ms: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("wait_for_ms", "waitForMs"),
-        ge=0,
-        le=10_000,
-        description="Compatibility alias for a bounded post-navigation wait",
     )
     challenge_wait_ms: int = Field(
         default=15_000,

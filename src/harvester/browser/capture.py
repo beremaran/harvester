@@ -136,9 +136,8 @@ class Harvester:
             except PWTimeoutError:
                 logger.warning("wait_for_selector '%s' timed out", req.wait_for_selector)
 
-        extra_wait_ms = req.wait_for_ms if req.wait_for_ms is not None else req.extra_wait_ms
-        if extra_wait_ms:
-            await page.wait_for_timeout(extra_wait_ms)
+        if req.extra_wait_ms:
+            await page.wait_for_timeout(req.extra_wait_ms)
 
     async def _safe_title(self, page: Page) -> str | None:
         try:
