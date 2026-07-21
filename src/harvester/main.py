@@ -118,7 +118,9 @@ async def _run_harvest(request: Request, req: HarvestRequest):
             return JSONResponse(status_code=429, content={"error": "capacity exceeded"})
         try:
             logger.info("harvest request url=%s proxy=%s", req.url, bool(req.proxy))
-            deadline_s = (max(config.navigation_timeout_ms, req.timeout_ms or 0) / 1000) + 30
+            deadline_s = (
+                (req.timeout_ms or config.navigation_timeout_ms) + req.challenge_wait_ms + req.extra_wait_ms
+            ) / 1000 + 15
             result = await asyncio.wait_for(harvester.harvest(req), timeout=deadline_s)
             if not result.ok:
                 return JSONResponse(status_code=502, content=result.model_dump())
