@@ -19,26 +19,12 @@ from playwright.async_api import (
 )
 
 from .config import Config, load_config
-from .detection import detect_protection
+from .detection import detect_challenge, detect_protection
 from .models import HarvestRequest, HarvestResponse
 from .security import assert_safe_url
 from .stealth_compat import apply_stealth, stealth_context_kwargs
 
 logger = logging.getLogger("harvester")
-
-_CHALLENGE_MARKERS = [
-    "just a moment",
-    "checking your browser",
-    "verifying you are human",
-    "enable javascript and cookies to continue",
-    "attention required",
-    "ddos-guard",
-    "please wait while we verify",
-    "one more step",
-    "verification is taking",
-    "__cf_chl",
-    "/cdn-cgi/challenge-platform",
-]
 
 _LAUNCH_ARGS = [
     "--no-sandbox",
@@ -114,11 +100,6 @@ def _build_scraper_headers(
 
 def _redacted_storage(values: dict[str, str], include_secrets: bool) -> dict[str, str]:
     return {str(key): _redact(value, include_secrets) for key, value in values.items()}
-
-
-def _looks_like_challenge(html: str, title: str) -> bool:
-    hay = f"{title}\n{html}".lower()
-    return any(marker in hay for marker in _CHALLENGE_MARKERS)
 
 
 async def _read_storage(page: Page, kind: str) -> dict[str, str]:
@@ -393,7 +374,7 @@ class Harvester:
                     break
                 continue
 
-            if not _looks_like_challenge(html, title):
+            if not detect_challenge(html, title):
                 if detected:
                     resp.challenge_cleared = True
                 break

@@ -161,6 +161,27 @@ _PROVIDERS = [
 ]
 
 
+_GENERIC_CHALLENGE_MARKERS = [
+    "just a moment",
+    "checking your browser",
+    "verifying you are human",
+    "enable javascript and cookies to continue",
+    "attention required",
+    "ddos-guard",
+    "please wait while we verify",
+    "one more step",
+    "verification is taking",
+]
+
+
+def detect_challenge(html: str = "", title: str = "") -> bool:
+    """Best-effort challenge-page detection from page content alone (no headers/cookies)."""
+    body = f"{title}\n{html}"[:250_000].lower()
+    if any(marker in body for marker in _GENERIC_CHALLENGE_MARKERS):
+        return True
+    return any(spec.challenge({}, body) for spec in _PROVIDERS)
+
+
 def _evaluate(spec: ProviderSpec, headers: Headers, cookies: list[str], body: str, status: int | None) -> dict[str, Any] | None:
     markers = [marker for detector in spec.detectors for marker in detector(headers, cookies, body)]
     if not markers:
