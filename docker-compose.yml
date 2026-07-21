@@ -8,7 +8,8 @@ services:
       - "${PORT:-8080}:${PORT:-8080}"
     environment:
       PORT: ${PORT:-8080}
-      API_KEY: ${API_KEY:?Set API_KEY}
+      API_KEY: ${API_KEY:-}
+      API_KEY_FILE: ${API_KEY_FILE:-}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:?Set ALLOWED_HOSTS}
       ALLOW_PRIVATE_NETWORKS: ${ALLOW_PRIVATE_NETWORKS:-false}
       CAPTURE_SECRET_VALUES: ${CAPTURE_SECRET_VALUES:-false}
@@ -23,3 +24,11 @@ services:
     # Chromium needs a larger shared-memory segment than Docker's 64MB default.
     shm_size: "1gb"
     restart: unless-stopped
+    # To use Docker Compose secrets for API_KEY instead of an env var, uncomment:
+    # secrets:
+    #   - api_key
+    # and set: API_KEY_FILE: /run/secrets/api_key
+
+# secrets:
+#   api_key:
+#     file: ./secrets/api_key.txt

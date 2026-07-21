@@ -27,6 +27,15 @@ class Config:
     allow_caller_headers: bool = False
 
 
+def _read_secret(values: Mapping[str, str], name: str) -> str:
+    """Read `<name>` from env, preferring `<name>_FILE` (Docker/Compose secrets) if set."""
+    file_path = values.get(f"{name}_FILE")
+    if file_path:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    return values.get(name, "")
+
+
 def _positive_int(value: str | None, fallback: int) -> int:
     try:
         parsed = int(value or "")
@@ -91,7 +100,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     )
     return Config(
         port=_positive_int(values.get("PORT"), 8080),
-        api_key=values.get("API_KEY", ""),
+        api_key=_read_secret(values, "API_KEY"),
         allowed_hosts=allowed_hosts,
         allow_private_networks=values.get("ALLOW_PRIVATE_NETWORKS", "false").lower() == "true",
         capture_secret_values=values.get("CAPTURE_SECRET_VALUES", "false").lower() == "true",
