@@ -354,7 +354,7 @@ class Harvester:
 
                 if req.return_html:
                     html = await page.content()
-                    if len(html.encode("utf-8")) > self.config.max_html_bytes:
+                    if self.config.max_html_bytes and len(html.encode("utf-8")) > self.config.max_html_bytes:
                         raise ValueError("rendered HTML exceeds MAX_HTML_BYTES")
                     resp.html = html
                 if req.return_screenshot:

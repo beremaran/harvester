@@ -20,8 +20,8 @@ class Config:
     capture_secret_values: bool = False
     max_concurrency: int = 2
     navigation_timeout_ms: int = 45_000
-    max_html_bytes: int = 2_000_000
-    max_body_bytes: int = 64 * 1024
+    max_html_bytes: int = 2_000_000  # 0 = unlimited
+    max_body_bytes: int = 64 * 1024  # 0 = unlimited
     bypass_headers_by_host: dict[str, dict[str, str]] | None = None
     allow_insecure_bypass_headers: bool = False
     allow_caller_headers: bool = False
@@ -42,6 +42,17 @@ def _positive_int(value: str | None, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
     return parsed if parsed > 0 else fallback
+
+
+def _non_negative_int_or_unlimited(value: str | None, fallback: int) -> int:
+    """Like `_positive_int`, but "0" or "unlimited" is accepted to mean no limit."""
+    if value is not None and value.strip().lower() == "unlimited":
+        return 0
+    try:
+        parsed = int(value or "")
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed >= 0 else fallback
 
 
 def parse_bypass_headers(raw: str = "") -> dict[str, dict[str, str]]:
@@ -106,8 +117,8 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         capture_secret_values=values.get("CAPTURE_SECRET_VALUES", "false").lower() == "true",
         max_concurrency=_positive_int(values.get("MAX_CONCURRENCY"), 2),
         navigation_timeout_ms=_positive_int(values.get("NAVIGATION_TIMEOUT_MS"), 45_000),
-        max_html_bytes=_positive_int(values.get("MAX_HTML_BYTES"), 2_000_000),
-        max_body_bytes=_positive_int(values.get("MAX_BODY_BYTES"), 64 * 1024),
+        max_html_bytes=_non_negative_int_or_unlimited(values.get("MAX_HTML_BYTES"), 2_000_000),
+        max_body_bytes=_non_negative_int_or_unlimited(values.get("MAX_BODY_BYTES"), 64 * 1024),
         bypass_headers_by_host=parse_bypass_headers(values.get("BYPASS_HEADERS_JSON", "")),
         allow_insecure_bypass_headers=values.get("ALLOW_INSECURE_BYPASS_HEADERS", "false").lower() == "true",
         allow_caller_headers=values.get("ALLOW_CALLER_HEADERS", "false").lower() == "true",

@@ -51,7 +51,7 @@ app = FastAPI(
 @app.middleware("http")
 async def request_size_limit(request: Request, call_next: Any):
     content_length = request.headers.get("content-length")
-    if content_length:
+    if content_length and config.max_body_bytes:
         try:
             too_large = int(content_length) > config.max_body_bytes
         except ValueError:
