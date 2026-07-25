@@ -84,7 +84,8 @@ jobs:
 
       - name: Smoke test the pushed image
         run: |
-          image="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          # Image tags carry no leading "v"; git tags do.
+          image="${REGISTRY}/${IMAGE_NAME}:${TAG#v}"
           docker run --detach --name renderer-worker-release \
             --init --shm-size=1gb -p 8082:8082 "$image"
           for _ in $(seq 1 30); do
