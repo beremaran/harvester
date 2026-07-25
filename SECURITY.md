@@ -10,20 +10,25 @@ withhold sensitive details until a secure exchange is agreed.
 Security fixes are made on the current `main` branch. This project does not yet
 publish versioned security support guarantees.
 
+Use of this software is subject to the
+[responsible use](README.md#responsible-use) expectations in the README.
+
 ## Deployment boundary
 
-Harvester is designed for a trusted Compose network. It deliberately:
+Harvester is designed for a trusted private network. It deliberately:
 
 - accepts arbitrary HTTP(S) target URLs, including private-network targets;
 - has no built-in caller authentication, target allowlist, or DNS filtering;
-- ignores target HTTPS certificate errors; and
-- returns cookies, Web Storage, request headers, response headers, rendered
-  HTML, and screenshots without redaction.
+- serves the browser playground from the same port as the API; and
+- returns cookies, request headers, response headers, rendered HTML, and
+  screenshots without redaction.
 
-Compose publishes the API on `127.0.0.1` by default. Do not bind it to a public
-or untrusted interface without an external layer that provides authentication,
-authorization, network restrictions, request limits, and appropriate logging.
-Treat every successful capture response as potentially sensitive.
+The service listens on all interfaces inside its container, and the published
+Docker or Compose port is whatever the operator maps. Bind it to loopback, or
+put it behind an external layer that provides authentication, authorization,
+network restrictions, request limits, and appropriate logging, before exposing
+it anywhere untrusted. Treat every successful capture response as potentially
+sensitive.
 
 The behaviors above are part of the documented deployment model, not security
 vulnerabilities by themselves. Reports showing a bypass of an established

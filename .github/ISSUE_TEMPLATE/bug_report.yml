@@ -38,6 +38,6 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Include Docker version, host OS, architecture, and relevant non-secret configuration.
+      description: Include how you ran it (Docker image or `npm run dev`), Node.js and Docker versions, host OS, architecture, and relevant non-secret configuration.
     validations:
       required: true

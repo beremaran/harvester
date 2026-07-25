@@ -3,6 +3,34 @@
 A small HTTP service that opens a page in Chrome and returns its rendered
 output. Crawling and SEO analysis belong in downstream services.
 
+## Responsible use
+
+This drives a real browser against real websites and reports how their bot
+defences respond. That is useful for research, for testing systems you are
+responsible for, and for measuring your own exposure — and it is just as
+capable of being pointed somewhere it does not belong. By using it you accept
+that:
+
+- You run it only against systems you own or have explicit authorisation to
+  test. If you are unsure whether your use is authorised, it is not; get
+  permission first.
+- You respect the target's terms of service and `robots.txt`, and you keep
+  `RENDER_CONCURRENCY` and your own request rate low enough that you never
+  degrade the service for its actual users. This is not a load-testing tool and
+  it is not a denial-of-service tool.
+- You do not use it to bypass authentication, authorisation, payment, or
+  licensing controls, to obtain credentials or session material belonging to
+  anyone else, for account abuse, or to harvest personal data.
+- You handle what it returns accordingly. Cookies, headers, and rendered HTML
+  routinely contain session material and personal data; store them only as long
+  as you need them, and keep them out of issues, logs, and screenshots.
+- You carry the legal responsibility for what you do with it. The software is
+  provided as is, without warranty of any kind — see [LICENSE](LICENSE).
+
+The blocking assessment exists to record *where* a defence stopped a request so
+it can be reported, not to grind past it. Deployment expectations for the
+service itself are in [SECURITY.md](SECURITY.md).
+
 ## Run it
 
 ```sh

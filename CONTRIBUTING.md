@@ -3,7 +3,9 @@
 Thanks for helping improve Harvester.
 
 Participation in this project is governed by the
-[Code of Conduct](CODE_OF_CONDUCT.md).
+[Code of Conduct](CODE_OF_CONDUCT.md), and contributions are held to the
+[responsible use](README.md#responsible-use) expectations that apply to running
+it.
 
 ## Before opening a change
 
@@ -13,28 +15,44 @@ Participation in this project is governed by the
   HTTP(S) targets and returns captured browser state, so it must remain private
   to a trusted network unless an external security boundary is added.
 - Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md).
+- Use non-sensitive targets in issues, tests, and fixtures. Requests to defeat a
+  named site's defences, and any captured credentials or session material, do
+  not belong in this tracker.
 
 ## Development workflow
 
-The Playwright browser version is tied to the Docker image. Use the pinned
-container workflow instead of a host Python environment:
+The service is Node.js and TypeScript. Install dependencies and run the API
+together with the Vite playground:
 
 ```sh
-docker build --target test -t harvester:test .
-docker run --rm --shm-size=1g harvester:test pytest -v tests
+npm install
+npm run dev
 ```
 
-The same offline suite is available as `make test`. Live fingerprinting tests
-are opt-in because they contact public services:
+Before opening a pull request, run the same checks CI runs:
 
 ```sh
-make test-live
+npm run check   # typechecks the server and the playground
+npm test        # domain, use-case, config, and HTTP tests
+npm run build   # server to dist/, playground to web-dist/
 ```
 
-Add regression coverage for changes to request interception, configuration,
-protection detection, or the API contract. Use modern Python, four-space
-indentation, type hints, small named functions, and explicit validation at
-security boundaries.
+These tests never launch a browser, so they run on the host. Anything that
+actually renders a page belongs in the container, because the Chrome version is
+tied to the image:
+
+```sh
+docker build -t renderer-worker .
+docker run --rm --platform linux/amd64 -p 8082:8082 \
+  --init --shm-size=1gb renderer-worker
+```
+
+Add regression coverage for changes to rendering, configuration, blocking
+assessment, the scraper handoff, or the API contract. Respect the
+ports-and-adapters boundaries described in `README.md`: `src/domain` stays pure,
+`src/application` depends only on its ports, and only `src/server.ts` wires
+concrete adapters. The TypeScript config is strict, server code is ESM, so
+relative imports carry `.js` extensions.
 
 ## Pull requests
 

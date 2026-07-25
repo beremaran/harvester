@@ -13,14 +13,57 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The renderer drives an installed Google Chrome, never a downloaded build.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
 jobs:
   test:
+    name: Typecheck, test, build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-      - name: Build pinned test image
-        run: docker build --target test -t harvester:test .
-      - name: Run offline test suite
-        run: docker run --rm --shm-size=1g harvester:test pytest -v tests
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck server and playground
+        run: npm run check
+      - name: Run test suite
+        run: npm test
+      - name: Build server and playground
+        run: npm run build
+
+  image:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t renderer-worker:ci .
+      - name: Start container
+        run: |
+          docker run --detach --name renderer-worker-ci \
+            --init --shm-size=1gb -p 8082:8082 renderer-worker:ci
+      - name: Wait for health
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8082/health; then
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "service did not become healthy" >&2
+          docker logs renderer-worker-ci >&2
+          exit 1
+      - name: Stop container
+        if: always()
+        run: docker rm --force renderer-worker-ci
