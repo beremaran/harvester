@@ -10,6 +10,8 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-25
+
 ### Fixed
 
 - The release workflow's post-push smoke test pulled the git tag (`v1.1.0`)
@@ -33,6 +35,7 @@ into a new version heading, so keep adding entries there as you merge changes.
 - Initial public release of the `renderer-worker` render service and its
   Vite/React playground.
 
-[unreleased]: https://github.com/beremaran/harvester/compare/v1.1.0...HEAD
+[unreleased]: https://github.com/beremaran/harvester/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/beremaran/harvester/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/beremaran/harvester/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/beremaran/harvester/releases/tag/v1.0.0
