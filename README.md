@@ -139,6 +139,7 @@ Match on JA4 rather than JA3 for that reason.
 - `npm run check` checks TypeScript.
 - `npm run build` writes the server to `dist` and the UI to `web-dist`.
 - `npm start` runs the built service and serves the playground on port 8082.
+- `npm run release -- <patch|minor|major>` cuts a release. See **Releases**.
 
 ## Settings
 
@@ -237,3 +238,46 @@ The image installs and runs Google Chrome. Google publishes Chrome for Linux
 on x86-64 only, so the image targets `linux/amd64`. Docker can run it through
 emulation on Apple Silicon. Local runs also use an installed Google Chrome by
 default.
+
+## Published images
+
+Every push to `main` and every release tag publishes an image to the GitHub
+Container Registry:
+
+```sh
+docker pull ghcr.io/beremaran/harvester:1.0.0   # a release
+docker pull ghcr.io/beremaran/harvester:1.0     # newest patch of 1.0
+docker pull ghcr.io/beremaran/harvester:1       # newest 1.x
+docker pull ghcr.io/beremaran/harvester:edge    # newest main
+```
+
+Images are also tagged `sha-<short sha>`. Pin a full version in anything you
+depend on; `edge` moves with every merge. `GET /health` reports the version the
+running container was built from.
+
+## Releases
+
+The project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and
+keeps a [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)-style
+[CHANGELOG.md](CHANGELOG.md). Describe user-visible changes under
+**Unreleased** as you merge them.
+
+To cut a release from a clean `main`:
+
+```sh
+npm run release -- minor      # or patch, major, or an explicit X.Y.Z
+git push --follow-tags
+```
+
+`npm run release` typechecks and tests, bumps `package.json` and the lockfile,
+moves the Unreleased entries under a dated version heading, commits
+`chore(release): vX.Y.Z`, and creates the matching annotated tag. Nothing is
+pushed for you.
+
+Pushing the tag runs `.github/workflows/release.yml`, which builds the image,
+pushes the version tags above to GHCR, smoke-tests the pushed image against
+`/health`, and opens a GitHub release whose notes are that version's changelog
+section.
+
+Useful flags: `--dry-run` (report what would happen and stop), `--skip-checks`
+(skip typecheck and tests), `--allow-empty-changelog`, `--allow-any-branch`.

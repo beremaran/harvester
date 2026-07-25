@@ -20,8 +20,11 @@ RUN npm run build
 FROM --platform=${DOCKER_PLATFORM} node:22-bookworm-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
+# Stamped by the release workflow so /health reports the published tag.
+ARG APP_VERSION=""
 
-ENV NODE_ENV=production \
+ENV APP_VERSION=${APP_VERSION} \
+    NODE_ENV=production \
     BROWSER_CHANNEL=chrome \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     LANG=C.UTF-8 \

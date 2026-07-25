@@ -11,8 +11,16 @@
     "dev:api": "tsx watch src/server.ts",
     "dev:ui": "vite",
     "postinstall": "node scripts/patch-rebrowser.mjs",
+    "release": "node scripts/release.mjs",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major",
     "start": "node dist/server.js",
     "test": "tsx --test test/**/*.test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beremaran/harvester.git"
   },
   "keywords": [
     "renderer",

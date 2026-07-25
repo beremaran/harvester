@@ -13,6 +13,7 @@ import type { BotCheckResult } from "../../src/domain/bot-checks.js";
 import type { RenderResult } from "../../src/domain/rendering.js";
 import { buildScraperHandoff } from "../../src/domain/scraper-handoff.js";
 import { createHttpServer } from "../../src/http/create-http-server.js";
+import { APP_VERSION } from "../../src/version.js";
 
 const renderResult: RenderResult = {
     url: "https://example.com",
@@ -62,6 +63,7 @@ describe("HTTP server", () => {
         assert.equal(response.statusCode, 200);
         assert.deepEqual(response.json(), {
             status: "ok",
+            version: APP_VERSION,
             active: 0,
             pending: 0
         });

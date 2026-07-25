@@ -19,6 +19,7 @@ import {
     MIN_RENDER_TIMEOUT_MS,
     type RenderCommand
 } from "../domain/rendering.js";
+import { APP_VERSION } from "../version.js";
 
 export interface HttpServerDependencies {
     renderPage: RenderPageUseCase;
@@ -39,6 +40,7 @@ export async function createHttpServer(
 
     app.get("/health", async () => ({
         status: "ok",
+        version: APP_VERSION,
         active: schedule.activeCount,
         pending: schedule.pendingCount
     }));
