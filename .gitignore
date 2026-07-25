@@ -1,8 +1,41 @@
+CLAUDE.md
+AGENTS.md
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+web-dist/
+*.tsbuildinfo
+
+# Caches
+.vite/
+coverage/
+
+# Playwright artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local settings (a shared .claude/settings.json stays tracked)
+.claude/settings.local.json
+
+# OS
 .DS_Store
-__pycache__/
-*.pyc
-.pytest_cache/
-.venv/
-venv/
-*.egg-info/
-.playwright-mcp/
+Thumbs.db

@@ -1,140 +1,211 @@
-# Stealth Browser Capture API
+# Renderer worker
 
-[![CI](https://github.com/beremaran/harvester/actions/workflows/ci.yml/badge.svg)](https://github.com/beremaran/harvester/actions/workflows/ci.yml)
+A small HTTP service that opens a page in Chrome and returns its rendered
+output. Crawling and SEO analysis belong in downstream services.
 
-An HTTP service that loads a URL through Chromium with `playwright-stealth`,
-waits for known anti-bot challenges, and returns cookies, web storage, browser
-headers, rendered HTML, screenshots, and protection metadata.
+## Run it
 
-The service is intended to sit behind the network boundary of its compose
-project. It does not provide API authentication, target-host allowlisting,
-DNS filtering, or secret redaction. Keep the container private to that trusted
-network.
-
-## Responsible use
-
-Use this software only with systems you own or are explicitly authorized to
-automate. Do not use it to obtain third-party credentials or session material,
-bypass authentication or authorization, conduct account abuse, or violate
-applicable terms or laws.
-
-## Build and run
-
-```bash
-docker compose up --build
+```sh
+npm install
+npm run dev
 ```
 
-The API listens on `http://localhost:8080`. Compose binds the published port to
-`127.0.0.1` by default and configures the `1gb` shared-memory segment Chromium
-needs. Containers in the same Compose network can reach it at
-`http://harvester:8080`.
+Open the playground at [http://localhost:5173](http://localhost:5173). The
+Vite dev server sends render and health calls to the worker on port 8082.
 
-To deliberately publish on another interface, set `HOST_BIND` before starting
-Compose. Do this only when an appropriate external authentication and network
-boundary protects the service.
+Render a page:
 
-## API
-
-### `GET /health` or `GET /healthz`
-
-Returns the browser status:
-
-```json
-{"status":"ok","browser_connected":true,"ok":true}
+```sh
+curl http://localhost:8082/render \
+  --json '{"url":"https://example.com"}'
 ```
 
-### `POST /harvest`
+The result includes:
 
-The native Python endpoint. The only required field is `url`.
+- the requested and final URLs
+- the HTTP status and page title
+- rendered HTML
+- the final document request headers
+- all cookies set in the browser context
+- a `scraper` handoff for replaying the session without a browser
+- render time
+
+The playground also has on-demand browser checks for Rebrowser, Sannysoft,
+Device & Browser Info, and BrowserLeaks. These checks run through the same
+browser service and return a page capture plus a short list of detected facts.
+The Rebrowser check calls the extra probe hooks listed in that test's guide.
+
+Set `"screenshot": true` in the request to include a base64 full-page
+screenshot. Screenshots stay off by default to cut work and response size.
+
+Downstream crawlers can load `cookies` into a cookie jar and use the useful
+parts of `requestHeaders`, such as `user-agent`, `accept`, and
+`accept-language`. Do not copy `cookie` from the headers; let the cookie jar
+build it for each URL. Headers such as `host`, `content-length`, `sec-fetch-*`,
+`sec-ch-ua*`, and `accept-encoding` should also stay under the HTTP client's
+control. HTTP/2 pseudo-headers are not included.
+
+## Scraper handoff
+
+Replaying the headers and cookies above from a plain HTTP client is usually
+not enough: the client's TLS ClientHello and HTTP/2 preface do not match the
+Chrome its `user-agent` claims to be, and that mismatch alone is enough for
+several defences to challenge it. Every render therefore includes a `scraper`
+object with the whole transport picture:
 
 ```json
 {
-  "url": "https://example.com/",
-  "proxy": {
-    "server": "http://proxy.internal:8080",
-    "username": "proxy-user",
-    "password": "proxy-password"
+  "origin": "https://www.example.com",
+  "userAgent": "Mozilla/5.0 ... Chrome/133.0.0.0 Safari/537.36",
+  "protocol": "h2",
+  "headers": { "sec-ch-ua": "...", "user-agent": "...", "accept": "..." },
+  "headerOrder": ["host", "sec-ch-ua", "user-agent", "..."],
+  "cookieHeader": "session=abc; region=nsw",
+  "clientOwnedHeaders": { "cookie": "send `cookieHeader`, or use a jar" },
+  "tls": {
+    "source": "measured",
+    "ja4": "t13d1516h2_8daaf6152771_02713d6af862",
+    "ja3": "771,4865-4866-4867-...",
+    "http2": { "fingerprint": "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p" },
+    "curves": ["X25519MLKEM768", "X25519", "P-256", "P-384"]
   },
-  "return_html": true,
-  "challenge_wait_ms": 15000,
-  "wait_for_selector": "#logged-in"
+  "tlsClient": {
+    "library": "bogdanfinn/tls-client",
+    "profile": "chrome_133",
+    "requestPayload": { "tlsClientIdentifier": "chrome_133", "...": "..." }
+  },
+  "curlImpersonate": "curl_chrome133 -H '...' 'https://www.example.com/'"
 }
 ```
 
-The response includes `final_url`, `status`, `final_status`, `title`,
-`cookies`, `local_storage`, `session_storage`, `request_headers`,
-`response_headers`, `scraper_headers`, `protection`, and optional `html` and
-`screenshot_b64`. Captured values are returned as-is.
+- `headers` are the replayable ones. `headerOrder` is the order to send them
+  in, including the headers listed in `clientOwnedHeaders`, which the client
+  must set itself. Pass it to a client that honours header order: alphabetised
+  headers are their own tell, and no browser sends them that way. (The order
+  is Chrome's known order rather than the observed one — CDP hands request
+  headers back sorted, so the real wire order is not observable from here.)
+- `cookieHeader` is the cookie jar already reduced to the cookies that apply
+  to `finalUrl` (domain, path, and `secure` honoured).
+- `tlsClient.requestPayload` is a ready-to-post body for the
+  [`bogdanfinn/tls-client`](https://github.com/bogdanfinn/tls-client) HTTP API,
+  and `tlsClient.profile` is the `tlsClientIdentifier` for the Go library. The
+  profile is pinned to the newest Chrome the library supports that is not
+  ahead of the browser we rendered with.
+- `curlImpersonate` is the same request for a
+  [curl-impersonate](https://github.com/lwthiker/curl-impersonate) build.
 
-### `POST /v1/capture`
+`tls.source` says how much to trust the hashes. `measured` means the renderer
+hit `TLS_FINGERPRINT_PROBE_URL` with its own Chrome and read the handshake
+back, so the values are exact. `profile` means the probe was disabled or
+failed and the values were derived from the Chrome version: the cipher, curve,
+and HTTP/2 lists are right, but there is no JA3/JA4 hash, because Chrome
+shuffles its TLS extension order and injects GREASE on every connection.
+Match on JA4 rather than JA3 for that reason.
 
-Compatibility endpoint for the original scraper contract. It accepts both
-snake_case and camelCase request names such as `includeHtml` and `waitForMs`,
-and returns `finalUrl`, `finalStatus`, `storage`, `requestHeaders`,
-`responseHeaders`, `scraperHeaders`, and `protection`.
+## Commands
 
-```bash
-curl -sS http://localhost:8080/v1/capture \
-  -H 'content-type: application/json' \
-  --data '{"url":"https://example.com/","includeHtml":true}' \
-  | jq '{finalUrl, finalStatus, scraperHeaders, protection}'
-```
+- `npm run dev` starts the service and reloads it after source changes.
+- `npm run dev:api` starts only the renderer API.
+- `npm run dev:ui` starts only the Vite playground.
+- `npm test` runs the domain, use-case, and HTTP tests.
+- `npm run check` checks TypeScript.
+- `npm run build` writes the server to `dist` and the UI to `web-dist`.
+- `npm start` runs the built service and serves the playground on port 8082.
 
-`scraperHeaders` contains common browser headers and the current `cookie`
-header. It is intended as capture metadata, not a guarantee that a non-browser
-HTTP client can reproduce the request.
+## Settings
 
-Capture failures return HTTP `502`; invalid request bodies return `422`,
-oversized bodies return `413`, and capacity limits return `429`.
-
-## Configuration
-
-| Variable | Default | Description |
+| Variable | Default | Meaning |
 | --- | --- | --- |
-| `MAX_CONCURRENCY` | `2` | Maximum simultaneous captures. |
-| `NAVIGATION_TIMEOUT_MS` | `45000` | Default navigation timeout. |
-| `MAX_HTML_BYTES` | `2000000` | Maximum returned rendered HTML size. |
-| `MAX_BODY_BYTES` | `65536` | Maximum capture request body size. |
-| `PORT` | `8080` | HTTP listen port. |
+| `PORT` | `8082` | HTTP port |
+| `RENDER_CONCURRENCY` | `3` | Pages rendered at once |
+| `BROWSER_CHANNEL` | `chrome` | Playwright browser channel |
+| `HEADLESS` | `true` | Set to `false` to render on a real display |
+| `LOCALE` | `en-AU` | Browser locale, sent as `Accept-Language` |
+| `TIMEZONE` | `Australia/Sydney` | Browser timezone |
+| `VIEWPORT_WIDTH` | `1440` | Viewport and window width |
+| `VIEWPORT_HEIGHT` | `900` | Viewport and window height |
+| `USER_AGENT` | Chrome's own | Overrides the user agent |
+| `TLS_FINGERPRINT_PROBE_URL` | `https://tls.peet.ws/api/all` | Endpoint used to measure our own TLS fingerprint; set empty to disable |
 
-`HOST_BIND` is a Compose-only setting. It defaults to `127.0.0.1` and controls
-which host interface publishes `PORT`.
+Locale and timezone matter for region-aware sites: a page served to a browser
+claiming `en-AU` in `Australia/Sydney` can differ from the default.
 
-## Tests
+Set `USER_AGENT` to something that identifies you and gives a contact address
+when you run against sites you do not own.
 
-The supported workflow runs the pinned Playwright environment in Docker:
+The TLS probe runs once per process, on the first render, and its result is
+reused for every later render. Set `TLS_FINGERPRINT_PROBE_URL=` (empty) to
+keep the renderer off third-party endpoints; renders then report
+`scraper.tls.source` as `profile`. A probe failure never fails a render.
 
-```bash
-make test            # offline suite
-make test-live       # opt-in public fingerprint/anti-bot suite
-make live-rebrowser  # one live target
-make live-list       # list live tests
+## Sessions
+
+Contexts are kept per origin and reused between renders, so cookies and any
+session survive from one call to the next. A fresh context per request means
+consent and region interstitials re-fire every time and no session is ever
+established.
+
+## Blocking assessment
+
+Every render includes a `blocking` object describing whether a bot defence
+stopped the request:
+
+```json
+{
+  "outcome": "challenged",
+  "vendor": "Akamai Bot Manager",
+  "signals": [
+    { "source": "cookie", "detail": "_abck" },
+    { "source": "body", "detail": "page title: Access Denied" }
+  ]
+}
 ```
 
-The offline suite covers cookies/storage, HTML and screenshots, challenge
-waiting, isolation, proxy failures, stealth activation, header capture, and
-provider detection. Live tests are skipped unless `RUN_LIVE_TESTS=1`.
+`outcome` is `served`, `challenged`, or `blocked`. A vendor cookie on a
+successful render is normal and reports as `served` — it means the defence is
+present and let the request through.
 
-## Layout
+This reads evidence that is already in the response. It does not try to change
+the outcome. Where a request gets stopped is the finding worth recording; use
+it to document blockers rather than to work around them.
 
-```text
-app/main.py              FastAPI routes, limits, and lifecycle
-app/harvester.py         Stealth browser, capture, and challenge waiting
-app/config.py            Environment configuration
-app/detection.py         WAF/anti-bot marker detection
-app/models.py            Pydantic request/response schemas
-app/stealth_compat.py    playwright-stealth 1.x/2.x compatibility
-app/stealth_hardening.js Supplemental fingerprint hardening
-tests/                   Offline and opt-in live tests
+## Code layout
+
+The server keeps business rules apart from tools:
+
+- `src/domain` owns render and bot-check terms and rules.
+- `src/application` holds the render and bot-check use cases and their ports.
+- `src/infrastructure/playwright` implements those ports with Playwright.
+- `src/http` maps HTTP input and output to the use cases.
+- `src/server.ts` reads config and wires the parts together.
+
+The playground follows the same bounds. `web/src/domain` holds client-side
+rules, `web/src/api` owns HTTP calls, and components own screen layout.
+
+## Run it with Docker
+
+Build and start the production image:
+
+```sh
+docker build -t renderer-worker .
+docker run --rm --platform linux/amd64 -p 8082:8082 \
+  --init --shm-size=1gb renderer-worker
 ```
 
-## Contributing and security
+Check that it is ready:
 
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the Docker
-development workflow and pull request expectations. Please report security
-issues privately as described in [SECURITY.md](SECURITY.md), rather than opening
-a public issue.
+```sh
+curl http://localhost:8082/health
+```
 
-## License
+Set any variable from **Settings** with `docker run -e`. If you change `PORT`,
+also change the container side of the port mapping. The larger shared memory
+limit helps Chrome render large pages without crashing.
 
-This project is available under the [MIT License](LICENSE).
+The image runs under `xvfb-run`, so `HEADLESS=false` works in the container and
+renders against a real display. It costs nothing when headless.
+
+The image installs and runs Google Chrome. Google publishes Chrome for Linux
+on x86-64 only, so the image targets `linux/amd64`. Docker can run it through
+emulation on Apple Silicon. Local runs also use an installed Google Chrome by
+default.

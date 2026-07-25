@@ -1,1 +1,0 @@
-"""Cookie/session harvester service."""

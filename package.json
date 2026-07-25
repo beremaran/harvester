@@ -1,0 +1,49 @@
+{
+  "name": "renderer-worker",
+  "version": "1.0.0",
+  "description": "A small browser-based page rendering service",
+  "private": true,
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc && vite build",
+    "check": "tsc --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "dev": "concurrently -n api,ui -c blue,magenta \"npm:dev:api\" \"npm:dev:ui\"",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:ui": "vite",
+    "postinstall": "node scripts/patch-rebrowser.mjs",
+    "start": "node dist/server.js",
+    "test": "tsx --test test/**/*.test.ts"
+  },
+  "keywords": [
+    "renderer",
+    "playwright"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@fastify/static": "^10.1.2",
+    "@radix-ui/react-slot": "^1.2.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "fastify": "5.10.0",
+    "lucide-react": "^0.468.0",
+    "p-limit": "7.3.1",
+    "playwright": "npm:rebrowser-playwright@1.52.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.2.1",
+    "tailwindcss": "^4.1.11",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.3"
+  }
+}

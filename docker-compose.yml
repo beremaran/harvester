@@ -1,18 +1,12 @@
 services:
-  harvester:
+  renderer-worker:
     build:
       context: .
-      target: base
-    image: harvester:latest
+    platform: linux/amd64
+    init: true
+    shm_size: 1gb
     ports:
-      - "${HOST_BIND:-127.0.0.1}:${PORT:-8080}:${PORT:-8080}"
+      - "${PORT:-8082}:${PORT:-8082}"
     environment:
-      PORT: ${PORT:-8080}
-      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-2}
-      NAVIGATION_TIMEOUT_MS: ${NAVIGATION_TIMEOUT_MS:-45000}
-      MAX_HTML_BYTES: ${MAX_HTML_BYTES:-2000000}
-      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-65536}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    # Chromium needs a larger shared-memory segment than Docker's 64MB default.
-    shm_size: "1gb"
-    restart: unless-stopped
+      PORT: "${PORT:-8082}"
+      RENDER_CONCURRENCY: "${RENDER_CONCURRENCY:-3}"

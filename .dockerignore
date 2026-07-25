@@ -1,8 +1,11 @@
 .git
 .gitignore
-**/__pycache__
-**/*.pyc
-.pytest_cache
-.venv
-venv
-*.md
+.env
+.env.*
+dist
+node_modules
+npm-debug.log*
+Dockerfile*
+compose*.yml
+compose*.yaml
+README.md
