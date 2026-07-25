@@ -10,6 +10,12 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The release workflow's post-push smoke test pulled the git tag (`v1.1.0`)
+  instead of the image tag (`1.1.0`), which failed the publish job and skipped
+  the GitHub release. The v1.1.0 image itself was published correctly.
+
 ## [1.1.0] - 2026-07-25
 
 ### Added
