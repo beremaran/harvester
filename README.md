@@ -154,6 +154,7 @@ Match on JA4 rather than JA3 for that reason.
 | `PORT` | `8082` | HTTP port |
 | `RENDER_CONCURRENCY` | `3` | Pages rendered at once |
 | `BROWSER_CHANNEL` | `chrome` | Playwright browser channel |
+| `BROWSER_EXECUTABLE_PATH` | none | Browser binary to launch; overrides the channel |
 | `HEADLESS` | `true` | Set to `false` to render on a real display |
 | `LOCALE` | `en-AU` | Browser locale, sent as `Accept-Language` |
 | `TIMEZONE` | `Australia/Sydney` | Browser timezone |
@@ -256,8 +257,7 @@ Build and start the production image:
 
 ```sh
 docker build -t renderer-worker .
-docker run --rm --platform linux/amd64 -p 8082:8082 \
-  --init --shm-size=1gb renderer-worker
+docker run --rm -p 8082:8082 --init --shm-size=1gb renderer-worker
 ```
 
 Check that it is ready:
@@ -273,10 +273,14 @@ limit helps Chrome render large pages without crashing.
 The image runs under `xvfb-run`, so `HEADLESS=false` works in the container and
 renders against a real display. It costs nothing when headless.
 
-The image installs and runs Google Chrome. Google publishes Chrome for Linux
-on x86-64 only, so the image targets `linux/amd64`. Docker can run it through
-emulation on Apple Silicon. Local runs also use an installed Google Chrome by
-default.
+Images are published for `linux/amd64` and `linux/arm64`, so Apple Silicon and
+arm64 servers run natively. Google publishes Chrome for Linux on x86-64 only,
+so the arm64 image runs Debian's Chromium instead. Chromium is a close stand-in
+but not byte-identical to Chrome, so prefer amd64 — through emulation if you
+have to — when a render has to look exactly like a desktop Chrome session.
+Whichever browser the image carries, it is linked at
+`/usr/local/bin/harvester-browser` and named by `BROWSER_EXECUTABLE_PATH`.
+Local runs outside Docker still use an installed Google Chrome by default.
 
 ## Published images
 

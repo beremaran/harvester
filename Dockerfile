@@ -1,6 +1,6 @@
-ARG DOCKER_PLATFORM=linux/amd64
-
-FROM --platform=${DOCKER_PLATFORM} node:22-bookworm-slim AS build
+# The build stage only emits JavaScript, so it runs natively on the builder
+# instead of under emulation. The runtime stage follows the target platform.
+FROM --platform=${BUILDPLATFORM} node:22-bookworm-slim AS build
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
@@ -17,15 +17,18 @@ COPY src ./src
 COPY web ./web
 RUN npm run build
 
-FROM --platform=${DOCKER_PLATFORM} node:22-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Stamped by the release workflow so /health reports the published tag.
 ARG APP_VERSION=""
+# Set by buildx: amd64 or arm64.
+ARG TARGETARCH
 
 ENV APP_VERSION=${APP_VERSION} \
     NODE_ENV=production \
-    BROWSER_CHANNEL=chrome \
+    BROWSER_CHANNEL="" \
+    BROWSER_EXECUTABLE_PATH=/usr/local/bin/harvester-browser \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     LANG=C.UTF-8 \
     PORT=8082 \
@@ -46,12 +49,21 @@ RUN apt-get update \
         tini \
         xvfb \
         xauth \
-    && curl -fsSLo /tmp/google-chrome.deb \
-        https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get install -y --no-install-recommends /tmp/google-chrome.deb \
+    # Google publishes Chrome for Linux on x86-64 only, so arm64 falls back to
+    # Debian's Chromium. Both land on one path the server launches by name.
+    && if [ "$TARGETARCH" = "amd64" ]; then \
+        curl -fsSLo /tmp/google-chrome.deb \
+            https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+        && apt-get install -y --no-install-recommends /tmp/google-chrome.deb \
+        && rm -f /tmp/google-chrome.deb \
+        && ln -s /opt/google/chrome/chrome /usr/local/bin/harvester-browser; \
+    else \
+        apt-get install -y --no-install-recommends chromium \
+        && ln -s /usr/bin/chromium /usr/local/bin/harvester-browser; \
+    fi \
     && fc-cache -f \
-    && rm -f /tmp/google-chrome.deb \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && /usr/local/bin/harvester-browser --version
 
 COPY package.json package-lock.json ./
 COPY scripts ./scripts

@@ -2,7 +2,9 @@ services:
   renderer-worker:
     build:
       context: .
-    platform: linux/amd64
+    # No platform pin: the image builds for amd64 and arm64. Set
+    # `platform: linux/amd64` to run Google Chrome on an arm64 host instead of
+    # the Chromium the arm64 image carries.
     init: true
     shm_size: 1gb
     ports:

@@ -6,6 +6,11 @@ export interface AppConfig {
     port: number;
     renderConcurrency: number;
     browserChannel: string;
+    /**
+     * Browser binary to launch instead of a channel. The arm64 image sets it
+     * because Google publishes Chrome for Linux on x86-64 only.
+     */
+    browserExecutablePath: string | undefined;
     headless: boolean;
     locale: string;
     timezone: string;
@@ -38,6 +43,8 @@ export function loadConfig(
             "RENDER_CONCURRENCY"
         ),
         browserChannel: environment.BROWSER_CHANNEL ?? "chrome",
+        browserExecutablePath:
+            environment.BROWSER_EXECUTABLE_PATH?.trim() || undefined,
         headless: environment.HEADLESS !== "false",
         locale: environment.LOCALE ?? "en-AU",
         timezone: environment.TIMEZONE ?? "Australia/Sydney",

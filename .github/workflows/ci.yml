@@ -48,6 +48,9 @@ jobs:
         uses: actions/checkout@v7
       - name: Build image
         run: docker build -t renderer-worker:ci .
+        env:
+          # The Dockerfile pins its build stage to BUILDPLATFORM.
+          DOCKER_BUILDKIT: "1"
       - name: Start container
         run: |
           docker run --detach --name renderer-worker-ci \

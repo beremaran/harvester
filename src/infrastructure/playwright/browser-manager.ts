@@ -8,12 +8,15 @@ export interface BrowserProvider {
 
 export interface BrowserOptions {
     channel: string;
+    /** Takes precedence over the channel when set. */
+    executablePath: string | undefined;
     headless: boolean;
     viewport: { width: number; height: number };
 }
 
 const DEFAULT_OPTIONS: BrowserOptions = {
     channel: "chrome",
+    executablePath: undefined,
     headless: true,
     viewport: { width: 1440, height: 900 }
 };
@@ -28,10 +31,15 @@ export class BrowserManager implements BrowserProvider {
 
     getBrowser(): Promise<Browser> {
         if (!this.browserPromise) {
-            const { channel, headless, viewport } = this.options;
+            const { channel, executablePath, headless, viewport } =
+                this.options;
 
             this.browserPromise = chromium.launch({
-                ...(channel ? { channel } : {}),
+                // Playwright refuses both at once, so a path wins over a
+                // channel: the arm64 image has no Google Chrome to name.
+                ...(executablePath
+                    ? { executablePath }
+                    : channel ? { channel } : {}),
                 headless,
                 // Suppress the automation banner so `navigator.webdriver` and
                 // the headless heuristics that key off it stay quiet.

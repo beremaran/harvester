@@ -10,6 +10,17 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Added
+
+- `linux/arm64` images. Release builds now publish a multi-arch manifest, so
+  Apple Silicon and arm64 servers pull a native image instead of emulating
+  x86-64. Google publishes Chrome for Linux on x86-64 only, so the arm64 image
+  runs Debian's Chromium; prefer amd64 when a render has to look exactly like
+  a desktop Chrome session.
+- `BROWSER_EXECUTABLE_PATH`, a browser binary to launch instead of a channel.
+  Both images link their browser at `/usr/local/bin/harvester-browser` and
+  point this at it, so the two architectures start the same way.
+
 ## [1.3.0] - 2026-07-26
 
 ### Added

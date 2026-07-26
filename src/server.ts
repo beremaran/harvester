@@ -21,6 +21,7 @@ const webRoot = path.resolve(currentDir, "../web-dist");
 const config = loadConfig();
 const browsers = new BrowserManager({
     channel: config.browserChannel,
+    executablePath: config.browserExecutablePath,
     headless: config.headless,
     viewport: config.viewport
 });

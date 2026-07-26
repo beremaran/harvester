@@ -23,13 +23,20 @@ jobs:
   publish:
     name: Publish image to GHCR
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Emulated arm64 layers are slow; the amd64 half alone fits well inside it.
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      # arm64 layers build under emulation on an x86-64 runner.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,12 +73,13 @@ jobs:
             echo "value=$(node -p "require('./package.json').version")+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
-      # Chrome for Linux ships x86-64 only, so the image stays single-arch.
+      # amd64 runs Google Chrome; arm64 runs Debian's Chromium, because Chrome
+      # for Linux ships x86-64 only.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: mode=max
           sbom: true
@@ -81,6 +89,19 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Emulated Chromium is too slow to render, so arm64 only has to prove the
+      # manifest exists and the browser binary runs.
+      - name: Check the arm64 image
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME}:${TAG#v}"
+          docker buildx imagetools inspect "$image" \
+            --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}}
+          {{end}}' | grep -qx 'linux/arm64'
+          docker run --rm --platform linux/arm64 \
+            --entrypoint /usr/local/bin/harvester-browser "$image" --version
+        env:
+          TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'edge' }}
 
       - name: Smoke test the pushed image
         run: |
