@@ -28,6 +28,10 @@ export interface HttpServerDependencies {
     concurrency: number;
     webRoot?: string;
     logger?: boolean;
+    /** When set, every route except /health requires this bearer token. */
+    apiKey?: string;
+    /** When non-empty, /render targets are limited to these hostnames. */
+    allowedHosts?: string[];
 }
 
 export async function createHttpServer(
@@ -38,6 +42,19 @@ export async function createHttpServer(
         bodyLimit: 32 * 1024
     });
     const schedule = pLimit(dependencies.concurrency);
+    const allowedHosts = new Set(dependencies.allowedHosts ?? []);
+
+    if (dependencies.apiKey) {
+        const expected = `Bearer ${dependencies.apiKey}`;
+        app.addHook("onRequest", async (request, reply) => {
+            if (request.url === "/health") {
+                return;
+            }
+            if (request.headers.authorization !== expected) {
+                return reply.code(401).send({ error: "unauthorized" });
+            }
+        });
+    }
 
     app.get("/health", async () => ({
         status: "ok",
@@ -50,6 +67,14 @@ export async function createHttpServer(
         "/render",
         { schema: { body: renderRequestSchema } },
         async (request, reply) => {
+            if (
+                allowedHosts.size > 0
+                && !allowedHosts.has(hostnameOf(request.body.url))
+            ) {
+                return reply.code(403).send({
+                    error: "render target host is not allowed"
+                });
+            }
             try {
                 return await schedule(
                     () => dependencies.renderPage.execute(request.body)
@@ -132,9 +157,23 @@ const renderRequestSchema = {
                 password: { type: "string", maxLength: 256 },
                 bypass: { type: "string", maxLength: 512 }
             }
+        },
+        extraHeaders: {
+            type: "object",
+            maxProperties: 32,
+            propertyNames: { maxLength: 64 },
+            additionalProperties: { type: "string", maxLength: 8192 }
         }
     }
 } as const;
+
+function hostnameOf(url: string): string {
+    try {
+        return new URL(url).hostname.toLowerCase();
+    } catch {
+        return "";
+    }
+}
 
 const botCheckParamsSchema = {
     type: "object",

@@ -66,6 +66,12 @@ The Rebrowser check calls the extra probe hooks listed in that test's guide.
 Set `"screenshot": true` in the request to include a base64 full-page
 screenshot. Screenshots stay off by default to cut work and response size.
 
+Set `"extraHeaders"` to a string map to make the page send extra headers with
+every request — for example `"extraHeaders": {"accept": "application/json"}`
+when the target is a JSON API rather than a page. Client-owned headers
+(`host`, `content-length`, and the like) are dropped. The headers are applied
+per page and are recorded in `requestHeaders` and the `scraper` handoff.
+
 Downstream crawlers can load `cookies` into a cookie jar and use the useful
 parts of `requestHeaders`, such as `user-agent`, `accept`, and
 `accept-language`. Do not copy `cookie` from the headers; let the cookie jar
@@ -159,6 +165,8 @@ Match on JA4 rather than JA3 for that reason.
 | `PROXY_USERNAME` | none | Proxy username, if it authenticates |
 | `PROXY_PASSWORD` | none | Proxy password |
 | `PROXY_BYPASS` | none | Comma-separated hosts to reach directly, e.g. `.internal, localhost` |
+| `API_KEY` | none | When set, every route except `/health` requires `Authorization: Bearer <key>` |
+| `ALLOWED_HOSTS` | none | Comma-separated hostnames `/render` may target; empty allows any host |
 
 Locale and timezone matter for region-aware sites: a page served to a browser
 claiming `en-AU` in `Australia/Sydney` can differ from the default.

@@ -63,6 +63,13 @@ export class PlaywrightPageRenderer implements PageRenderer {
         const page = await context.newPage();
 
         try {
+            if (request.extraHeaders) {
+                // Per-page so the shared origin context keeps its own headers;
+                // every request this page makes (navigation included) carries
+                // them, and allHeaders() below records them for the handoff.
+                await page.setExtraHTTPHeaders(request.extraHeaders);
+            }
+
             const response = await page.goto(request.url, {
                 waitUntil: "domcontentloaded",
                 timeout: request.timeoutMs

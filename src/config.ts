@@ -18,6 +18,13 @@ export interface AppConfig {
     tlsProbeUrl: string | undefined;
     /** Proxy every render leaves through unless the request overrides it. */
     proxy: ProxySettings | undefined;
+    /** When set, /render and /bot-check require this bearer token. */
+    apiKey: string | undefined;
+    /**
+     * Hostnames /render may target, lowercased. Empty allows any host;
+     * set it so the service cannot be used as an open render proxy.
+     */
+    allowedHosts: string[];
 }
 
 export function loadConfig(
@@ -50,7 +57,12 @@ export function loadConfig(
         tlsProbeUrl: environment.TLS_FINGERPRINT_PROBE_URL === undefined
             ? DEFAULT_TLS_FINGERPRINT_PROBE_URL
             : environment.TLS_FINGERPRINT_PROBE_URL || undefined,
-        proxy: readProxy(environment)
+        proxy: readProxy(environment),
+        apiKey: environment.API_KEY?.trim() || undefined,
+        allowedHosts: (environment.ALLOWED_HOSTS ?? "")
+            .split(",")
+            .map((host) => host.trim().toLowerCase())
+            .filter((host) => host.length > 0)
     };
 }
 

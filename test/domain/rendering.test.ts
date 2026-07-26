@@ -19,8 +19,32 @@ describe("createRenderRequest", () => {
                 timeoutMs: DEFAULT_RENDER_TIMEOUT_MS,
                 screenshot: false,
                 waitForSelector: undefined,
-                proxy: undefined
+                proxy: undefined,
+                extraHeaders: undefined
             }
+        );
+    });
+
+    it("keeps extra headers and drops client-owned ones", () => {
+        assert.deepEqual(
+            createRenderRequest({
+                url: "https://example.com",
+                extraHeaders: {
+                    accept: "application/json",
+                    Host: "spoofed.example",
+                    ":authority": "spoofed.example",
+                    "content-length": "10",
+                    "": "blank"
+                }
+            }).extraHeaders,
+            { accept: "application/json" }
+        );
+        assert.equal(
+            createRenderRequest({
+                url: "https://example.com",
+                extraHeaders: { host: "spoofed.example" }
+            }).extraHeaders,
+            undefined
         );
     });
 

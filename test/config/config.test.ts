@@ -18,8 +18,20 @@ describe("loadConfig", () => {
             viewport: { width: 1440, height: 900 },
             userAgent: undefined,
             tlsProbeUrl: DEFAULT_TLS_FINGERPRINT_PROBE_URL,
-            proxy: undefined
+            proxy: undefined,
+            apiKey: undefined,
+            allowedHosts: []
         });
+    });
+
+    it("reads the API key and allowed hosts", () => {
+        assert.equal(loadConfig({ API_KEY: "  secret " }).apiKey, "secret");
+        assert.equal(loadConfig({ API_KEY: " " }).apiKey, undefined);
+        assert.deepEqual(
+            loadConfig({ ALLOWED_HOSTS: " WWW.Example.com, ,api.example.com " }).allowedHosts,
+            ["www.example.com", "api.example.com"]
+        );
+        assert.deepEqual(loadConfig({ ALLOWED_HOSTS: " " }).allowedHosts, []);
     });
 
     it("reads proxy settings and validates them", () => {
@@ -75,7 +87,9 @@ describe("loadConfig", () => {
                 viewport: { width: 1280, height: 720 },
                 userAgent: "PostureAssessment/1.0",
                 tlsProbeUrl: "https://probe.internal/api",
-                proxy: undefined
+                proxy: undefined,
+                apiKey: undefined,
+                allowedHosts: []
             }
         );
     });

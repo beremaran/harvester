@@ -50,7 +50,9 @@ const app = await createHttpServer({
         })
     ),
     concurrency: config.renderConcurrency,
-    webRoot
+    webRoot,
+    ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    allowedHosts: config.allowedHosts
 });
 let shuttingDown = false;
 

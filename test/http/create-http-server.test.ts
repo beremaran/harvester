@@ -53,8 +53,19 @@ const app = await createHttpServer({
     concurrency: 2,
     logger: false
 });
+const securedApp = await createHttpServer({
+    renderPage: new RenderPage(renderer),
+    runBotCheck: new RunBotCheck(botChecks),
+    concurrency: 1,
+    logger: false,
+    apiKey: "test-key",
+    allowedHosts: ["www.example.com"]
+});
 
-after(() => app.close());
+after(async () => {
+    await app.close();
+    await securedApp.close();
+});
 
 describe("HTTP server", () => {
     it("reports queue health", async () => {
@@ -123,5 +134,83 @@ describe("HTTP server", () => {
         assert.deepEqual(response.json(), {
             error: "only HTTP and HTTPS URLs are supported"
         });
+    });
+
+    it("forwards extra headers to the renderer", async () => {
+        let seen: Record<string, string> | undefined;
+        const capturing = await createHttpServer({
+            renderPage: new RenderPage({
+                render: (request) => {
+                    seen = request.extraHeaders;
+                    return Promise.resolve(renderResult);
+                }
+            }),
+            runBotCheck: new RunBotCheck(botChecks),
+            concurrency: 1,
+            logger: false
+        });
+
+        const response = await capturing.inject({
+            method: "POST",
+            url: "/render",
+            payload: {
+                url: "https://example.com",
+                extraHeaders: { accept: "application/json" }
+            }
+        });
+
+        assert.equal(response.statusCode, 200);
+        assert.deepEqual(seen, { accept: "application/json" });
+        await capturing.close();
+    });
+});
+
+describe("HTTP server with auth and an allowlist", () => {
+    const secured = securedApp;
+
+    it("leaves /health open", async () => {
+        const response = await secured.inject({ method: "GET", url: "/health" });
+
+        assert.equal(response.statusCode, 200);
+    });
+
+    it("rejects a missing or wrong bearer token", async () => {
+        for (const authorization of [undefined, "Bearer wrong"]) {
+            const response = await secured.inject({
+                method: "POST",
+                url: "/render",
+                headers: authorization ? { authorization } : {},
+                payload: { url: "https://www.example.com" }
+            });
+
+            assert.equal(response.statusCode, 401);
+            assert.deepEqual(response.json(), { error: "unauthorized" });
+        }
+    });
+
+    it("rejects a target outside the allowlist", async () => {
+        const response = await secured.inject({
+            method: "POST",
+            url: "/render",
+            headers: { authorization: "Bearer test-key" },
+            payload: { url: "https://evil.example.net/" }
+        });
+
+        assert.equal(response.statusCode, 403);
+        assert.deepEqual(response.json(), {
+            error: "render target host is not allowed"
+        });
+    });
+
+    it("renders an allowed host with the right token", async () => {
+        const response = await secured.inject({
+            method: "POST",
+            url: "/render",
+            headers: { authorization: "Bearer test-key" },
+            payload: { url: "https://www.example.com/path" }
+        });
+
+        assert.equal(response.statusCode, 200);
+        assert.deepEqual(response.json(), renderResult);
     });
 });

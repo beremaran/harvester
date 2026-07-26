@@ -18,6 +18,11 @@ export interface RenderCommand {
     waitForSelector?: string;
     /** Overrides the configured proxy for this render only. */
     proxy?: ProxyCommand;
+    /**
+     * Extra headers the page sends with every request, e.g. a retailer API's
+     * expected `accept`. They flow into the handoff's recorded headers.
+     */
+    extraHeaders?: Record<string, string>;
 }
 
 export interface RenderRequest {
@@ -26,6 +31,7 @@ export interface RenderRequest {
     screenshot: boolean;
     waitForSelector: string | undefined;
     proxy: ProxySettings | undefined;
+    extraHeaders: Record<string, string> | undefined;
 }
 
 export interface BrowserCookie {
@@ -70,8 +76,41 @@ export function createRenderRequest(command: RenderCommand): RenderRequest {
         timeoutMs: clampTimeout(command.timeoutMs),
         screenshot: command.screenshot ?? false,
         waitForSelector: command.waitForSelector || undefined,
-        proxy: command.proxy ? createProxySettings(command.proxy) : undefined
+        proxy: command.proxy ? createProxySettings(command.proxy) : undefined,
+        extraHeaders: sanitizeExtraHeaders(command.extraHeaders)
     };
+}
+
+/**
+ * Drops entries a browser context must own itself; pseudo/authority headers
+ * can never be replayed and a spoofed host would break the origin.
+ */
+const EXTRA_HEADER_BLOCKLIST = new Set([
+    "host",
+    "content-length",
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "te",
+    "upgrade"
+]);
+
+function sanitizeExtraHeaders(
+    headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+    if (!headers) {
+        return undefined;
+    }
+
+    const entries = Object.entries(headers).filter(([name, value]) => {
+        const normalized = name.trim().toLowerCase();
+        return normalized.length > 0
+            && !normalized.startsWith(":")
+            && !EXTRA_HEADER_BLOCKLIST.has(normalized)
+            && value.length > 0;
+    });
+
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function parseWebUrl(value: string): string {
