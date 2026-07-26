@@ -43,6 +43,7 @@ RUN apt-get update \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
         fonts-noto-core \
+        tini \
         xvfb \
         xauth \
     && curl -fsSLo /tmp/google-chrome.deb \
@@ -65,6 +66,12 @@ EXPOSE 8082
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/health').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+
+# xvfb-run waits for Xvfb to signal readiness with SIGUSR1, and a PID 1 shell
+# never receives it: the server would never start and the container would sit
+# unhealthy forever. tini takes PID 1 so the handshake works without the caller
+# having to remember `docker run --init`.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Xvfb gives Chrome a real display, so HEADLESS=false renders the way a
 # desktop browser does. With HEADLESS=true (the default) it costs nothing.

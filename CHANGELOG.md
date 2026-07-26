@@ -10,6 +10,25 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Added
+
+- `extraHeaders` on a `/render` body: a string map the page sends with every
+  request, so a crawler can bootstrap a JSON endpoint with the right `accept`
+  headers. Client-owned headers such as `host` and `content-length` are
+  dropped. The headers are applied per page and recorded in `requestHeaders`
+  and the `scraper` handoff.
+- `API_KEY`. When set, every route except `/health` requires
+  `Authorization: Bearer <key>`.
+- `ALLOWED_HOSTS`, a comma-separated list of hostnames `/render` may target, so
+  the service cannot be used as an open render proxy. Empty allows any host.
+
+### Fixed
+
+- The container now starts. `xvfb-run` waits for Xvfb to signal readiness with
+  SIGUSR1, which a PID 1 shell never receives, so the server never started and
+  the container stayed unhealthy until the caller remembered `docker run
+  --init`. tini now takes PID 1 inside the image.
+
 ## [1.2.0] - 2026-07-26
 
 ### Added
