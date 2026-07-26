@@ -17,8 +17,31 @@ describe("loadConfig", () => {
             timezone: "Australia/Sydney",
             viewport: { width: 1440, height: 900 },
             userAgent: undefined,
-            tlsProbeUrl: DEFAULT_TLS_FINGERPRINT_PROBE_URL
+            tlsProbeUrl: DEFAULT_TLS_FINGERPRINT_PROBE_URL,
+            proxy: undefined
         });
+    });
+
+    it("reads proxy settings and validates them", () => {
+        assert.deepEqual(
+            loadConfig({
+                PROXY_SERVER: "proxy.example:3128",
+                PROXY_USERNAME: "scout",
+                PROXY_PASSWORD: "hunter2",
+                PROXY_BYPASS: ".internal"
+            }).proxy,
+            {
+                server: "http://proxy.example:3128",
+                username: "scout",
+                password: "hunter2",
+                bypass: ".internal"
+            }
+        );
+        assert.equal(loadConfig({ PROXY_SERVER: "  " }).proxy, undefined);
+        assert.throws(
+            () => loadConfig({ PROXY_SERVER: "ftp://proxy.example:21" }),
+            /only http, https, socks4, and socks5 proxies are supported/
+        );
     });
 
     it("disables the TLS probe when its URL is blank", () => {
@@ -51,7 +74,8 @@ describe("loadConfig", () => {
                 timezone: "Europe/London",
                 viewport: { width: 1280, height: 720 },
                 userAgent: "PostureAssessment/1.0",
-                tlsProbeUrl: "https://probe.internal/api"
+                tlsProbeUrl: "https://probe.internal/api",
+                proxy: undefined
             }
         );
     });

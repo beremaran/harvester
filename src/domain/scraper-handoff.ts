@@ -5,6 +5,7 @@
  * and the transport fingerprint the request has to carry.
  */
 
+import type { ProxyDescription } from "./proxy.js";
 import type { BrowserCookie } from "./rendering.js";
 import {
     chromeMajorVersion,
@@ -63,6 +64,13 @@ export interface TlsClientPreset {
     requestPayload: Record<string, unknown>;
 }
 
+export interface ScraperProxyHandoff {
+    /** Proxy the session was established through, without credentials. */
+    server: string;
+    /** Set when the proxy needs credentials the replaying client must supply. */
+    note?: string;
+}
+
 export interface ScraperHandoff {
     /** Origin these headers and cookies are valid for. */
     origin: string;
@@ -80,6 +88,8 @@ export interface ScraperHandoff {
     clientOwnedHeaders: Record<string, string>;
     tls: TlsFingerprint;
     tlsClient: TlsClientPreset;
+    /** Egress to replay through, when the render used one. */
+    proxy?: ScraperProxyHandoff;
     /** Equivalent `curl_chrome*` invocation from curl-impersonate. */
     curlImpersonate: string;
 }
@@ -92,6 +102,8 @@ export interface ScraperHandoffInput {
     /** Measured fingerprint; falls back to the version profile when absent. */
     tls?: TlsFingerprint;
     timeoutMs?: number;
+    /** Egress the render used, so the replay can leave from the same IP. */
+    proxy?: ProxyDescription;
 }
 
 export function buildScraperHandoff(
@@ -115,6 +127,7 @@ export function buildScraperHandoff(
             })
     );
     const cookieHeader = buildCookieHeader(input.cookies, input.finalUrl);
+    const proxy = input.proxy ? proxyHandoff(input.proxy) : undefined;
 
     return {
         origin: new URL(input.finalUrl).origin,
@@ -142,15 +155,36 @@ export function buildScraperHandoff(
                 headers: cookieHeader
                     ? { ...headers, cookie: cookieHeader }
                     : headers,
-                headerOrder
+                headerOrder,
+                ...(proxy ? { proxyUrl: proxy.server } : {})
             }
         },
+        ...(proxy ? { proxy } : {}),
         curlImpersonate: buildCurlCommand(
             input.finalUrl,
             headers,
             cookieHeader,
-            majorVersion
+            majorVersion,
+            proxy?.server
         )
+    };
+}
+
+/**
+ * The session above was established from the proxy's exit IP, so a replay from
+ * anywhere else contradicts it. Credentials are deliberately left out: with an
+ * environment-configured proxy they belong to the operator, not to whoever
+ * called `/render`.
+ */
+function proxyHandoff(proxy: ProxyDescription): ScraperProxyHandoff {
+    return {
+        server: proxy.server,
+        ...(proxy.authenticated
+            ? {
+                note: "this proxy authenticates — add the credentials as"
+                    + " `scheme://user:password@host:port`"
+            }
+            : {})
     };
 }
 
@@ -259,7 +293,8 @@ function buildCurlCommand(
     url: string,
     headers: Record<string, string>,
     cookieHeader: string,
-    majorVersion: number
+    majorVersion: number,
+    proxyServer?: string
 ): string {
     const target = CURL_IMPERSONATE_TARGETS
         .filter((version) => version <= majorVersion)
@@ -271,6 +306,10 @@ function buildCurlCommand(
 
     if (cookieHeader) {
         parts.push(`-H ${shellQuote(`cookie: ${cookieHeader}`)}`);
+    }
+
+    if (proxyServer) {
+        parts.push(`--proxy ${shellQuote(proxyServer)}`);
     }
 
     return `${binary} ${parts.join(" ")} ${shellQuote(url)}`;

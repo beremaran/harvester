@@ -23,6 +23,11 @@ export function ScraperView({ scraper }: { scraper: ScraperHandoff }) {
         <Badge variant="outline">{scraper.protocol}</Badge>
         <Badge variant="outline">{tls.tlsVersion}</Badge>
         <Badge variant="outline">Chrome {tls.chromeMajorVersion}</Badge>
+        {scraper.proxy ? (
+          <Badge variant="outline" title={scraper.proxy.note}>
+            via {scraper.proxy.server}
+          </Badge>
+        ) : null}
       </div>
 
       <Section

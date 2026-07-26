@@ -7,7 +7,9 @@ import type {
     BotCheckResult,
     BotCheckStatus
 } from "../../domain/bot-checks.js";
+import type { ProxySettings } from "../../domain/proxy.js";
 import type { BrowserProvider } from "./browser-manager.js";
+import { proxyContextOptions } from "./proxy-options.js";
 import { STEALTH_INIT_SCRIPT } from "./stealth.js";
 
 interface BotCheckDefinition {
@@ -181,10 +183,14 @@ const checks: Record<BotCheckId, BotCheckDefinition> = {
 
 export interface BotCheckRunnerOptions {
     viewport: { width: number; height: number };
+    /** Checks run through the same egress as renders, or they measure a
+     * different client than the one doing the work. */
+    proxy: ProxySettings | undefined;
 }
 
 const DEFAULT_RUNNER_OPTIONS: BotCheckRunnerOptions = {
-    viewport: { width: 1440, height: 900 }
+    viewport: { width: 1440, height: 900 },
+    proxy: undefined
 };
 
 export class PlaywrightBotCheckRunner implements BotCheckRunner {
@@ -206,7 +212,8 @@ export class PlaywrightBotCheckRunner implements BotCheckRunner {
         // and window.outer* stay consistent (the rebrowser viewport test flags
         // the mismatch a default 1280x720 context would otherwise leave).
         const context = await browser.newContext({
-            viewport: this.options.viewport
+            viewport: this.options.viewport,
+            ...proxyContextOptions(this.options.proxy)
         });
         await context.addInitScript(STEALTH_INIT_SCRIPT);
 

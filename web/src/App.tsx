@@ -7,6 +7,7 @@ import {
   History,
   Image as ImageIcon,
   LoaderCircle,
+  Network,
   PanelTop,
   Play,
   Server,
@@ -56,6 +57,7 @@ function App() {
   const [url, setUrl] = useState("https://example.com");
   const [timeoutMs, setTimeoutMs] = useState(30_000);
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
+  const [proxyServer, setProxyServer] = useState("");
   const [result, setResult] = useState<RenderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,10 +103,14 @@ function App() {
 
     setIsLoading(true);
     try {
+      const proxy = proxyServer.trim();
       const next = await requestRender({
         url,
         timeoutMs,
         screenshot: includeScreenshot,
+        // Left out entirely when blank, so the server's own proxy setting
+        // stays in charge.
+        ...(proxy ? { proxy: { server: proxy } } : {}),
       });
       setResult(next);
       setActiveTab("preview");
@@ -286,6 +292,25 @@ function App() {
                     {value / 1000}s
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="field-group">
+              <div className="label-row">
+                <label htmlFor="proxy">Proxy</label>
+                <span>{proxyServer.trim() ? "This render" : "Server default"}</span>
+              </div>
+              <div className="url-input-wrap">
+                <Network size={16} />
+                <Input
+                  id="proxy"
+                  value={proxyServer}
+                  onChange={(event) => setProxyServer(event.target.value)}
+                  placeholder="http://user:pass@proxy.example:3128"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
               </div>
             </div>
 

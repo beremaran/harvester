@@ -10,6 +10,22 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Added
+
+- Proxy support. `PROXY_SERVER` (with `PROXY_USERNAME`, `PROXY_PASSWORD`, and
+  `PROXY_BYPASS`) sends every render, bot check, and TLS probe through a
+  proxy, and a `proxy` object on a `/render` body overrides it for that render.
+  http, https, socks4, and socks5 are supported.
+- Renders report the egress they used as `proxy`, and the `scraper` handoff
+  carries the proxy server so a replay leaves from the same exit IP. Proxy
+  credentials are never returned.
+- The playground has a proxy field on the render form.
+
+### Changed
+
+- Browser contexts are now keyed by origin *and* egress, so a session started
+  through one proxy is never continued through another.
+
 ## [1.1.1] - 2026-07-25
 
 ### Fixed

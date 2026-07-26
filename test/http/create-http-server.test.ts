@@ -86,6 +86,32 @@ describe("HTTP server", () => {
         );
     });
 
+    it("rejects an unusable proxy before starting a browser", async () => {
+        const response = await app.inject({
+            method: "POST",
+            url: "/render",
+            payload: {
+                url: "https://example.com",
+                proxy: { server: "ftp://proxy.example:21" }
+            }
+        });
+
+        assert.equal(response.statusCode, 400);
+        assert.deepEqual(response.json(), {
+            error: "only http, https, socks4, and socks5 proxies are supported"
+        });
+    });
+
+    it("rejects a proxy without a server", async () => {
+        const response = await app.inject({
+            method: "POST",
+            url: "/render",
+            payload: { url: "https://example.com", proxy: { username: "a" } }
+        });
+
+        assert.equal(response.statusCode, 400);
+    });
+
     it("maps domain input errors to a bad request", async () => {
         const response = await app.inject({
             method: "POST",

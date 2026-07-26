@@ -155,6 +155,10 @@ Match on JA4 rather than JA3 for that reason.
 | `VIEWPORT_HEIGHT` | `900` | Viewport and window height |
 | `USER_AGENT` | Chrome's own | Overrides the user agent |
 | `TLS_FINGERPRINT_PROBE_URL` | `https://tls.peet.ws/api/all` | Endpoint used to measure our own TLS fingerprint; set empty to disable |
+| `PROXY_SERVER` | none | Proxy every render leaves through, e.g. `http://proxy.example:3128` |
+| `PROXY_USERNAME` | none | Proxy username, if it authenticates |
+| `PROXY_PASSWORD` | none | Proxy password |
+| `PROXY_BYPASS` | none | Comma-separated hosts to reach directly, e.g. `.internal, localhost` |
 
 Locale and timezone matter for region-aware sites: a page served to a browser
 claiming `en-AU` in `Australia/Sydney` can differ from the default.
@@ -167,10 +171,37 @@ reused for every later render. Set `TLS_FINGERPRINT_PROBE_URL=` (empty) to
 keep the renderer off third-party endpoints; renders then report
 `scraper.tls.source` as `profile`. A probe failure never fails a render.
 
+## Proxies
+
+Set `PROXY_SERVER` and every render, bot check, and TLS probe leaves through
+it. A single render can override it:
+
+```sh
+curl http://localhost:8082/render \
+  --json '{
+    "url": "https://example.com",
+    "proxy": { "server": "http://user:pass@proxy.example:3128" }
+  }'
+```
+
+`http`, `https`, `socks4`, and `socks5` are supported; a bare `host:3128` is
+read as an HTTP proxy. Credentials may be given inline in the URL or as
+separate `username`/`password` fields — Chrome ignores credentials in the
+proxy URL, so they are lifted out either way. Chromium cannot authenticate to
+a SOCKS proxy, so a SOCKS server with a username is rejected rather than
+silently connected to as anonymous.
+
+The render reports its egress as `proxy: { server, source, authenticated }` —
+`source` is `request` or `config` — and the `scraper` handoff carries the same
+server so a downstream replay leaves from the same exit IP as the session it
+is replaying. Credentials are never returned: with an environment-configured
+proxy they belong to the operator, not to whoever called `/render`.
+
 ## Sessions
 
-Contexts are kept per origin and reused between renders, so cookies and any
-session survive from one call to the next. A fresh context per request means
+Contexts are kept per origin *and* egress, so a session started through one
+proxy is never continued through another. Cookies and any session survive from
+one call to the next. A fresh context per request means
 consent and region interstitials re-fire every time and no session is ever
 established.
 

@@ -47,6 +47,7 @@ it("RenderPage validates the command before calling its renderer", async () => {
         url: "https://example.com",
         timeoutMs: 30_000,
         screenshot: true,
-        waitForSelector: undefined
+        waitForSelector: undefined,
+        proxy: undefined
     });
 });

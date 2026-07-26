@@ -1,3 +1,5 @@
+import { createProxySettings, type ProxySettings } from "./domain/proxy.js";
+
 export const DEFAULT_TLS_FINGERPRINT_PROBE_URL = "https://tls.peet.ws/api/all";
 
 export interface AppConfig {
@@ -14,6 +16,8 @@ export interface AppConfig {
      * Empty disables the probe and falls back to the Chrome version profile.
      */
     tlsProbeUrl: string | undefined;
+    /** Proxy every render leaves through unless the request overrides it. */
+    proxy: ProxySettings | undefined;
 }
 
 export function loadConfig(
@@ -45,8 +49,32 @@ export function loadConfig(
         userAgent: environment.USER_AGENT || undefined,
         tlsProbeUrl: environment.TLS_FINGERPRINT_PROBE_URL === undefined
             ? DEFAULT_TLS_FINGERPRINT_PROBE_URL
-            : environment.TLS_FINGERPRINT_PROBE_URL || undefined
+            : environment.TLS_FINGERPRINT_PROBE_URL || undefined,
+        proxy: readProxy(environment)
     };
+}
+
+function readProxy(
+    environment: NodeJS.ProcessEnv
+): ProxySettings | undefined {
+    const server = environment.PROXY_SERVER?.trim();
+
+    if (!server) {
+        return undefined;
+    }
+
+    return createProxySettings({
+        server,
+        ...(environment.PROXY_USERNAME ? {
+            username: environment.PROXY_USERNAME
+        } : {}),
+        ...(environment.PROXY_PASSWORD ? {
+            password: environment.PROXY_PASSWORD
+        } : {}),
+        ...(environment.PROXY_BYPASS ? {
+            bypass: environment.PROXY_BYPASS
+        } : {})
+    });
 }
 
 function readPositiveInteger(

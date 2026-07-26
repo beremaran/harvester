@@ -47,7 +47,17 @@ export interface ScraperHandoff {
     profile: string;
     requestPayload: Record<string, unknown>;
   };
+  proxy?: {
+    server: string;
+    note?: string;
+  };
   curlImpersonate: string;
+}
+
+export interface ProxyDescription {
+  server: string;
+  source: "request" | "config";
+  authenticated: boolean;
 }
 
 export interface RenderResult {
@@ -59,6 +69,7 @@ export interface RenderResult {
   screenshot?: string;
   requestHeaders: Record<string, string>;
   cookies: BrowserCookie[];
+  proxy?: ProxyDescription;
   scraper: ScraperHandoff;
   durationMs: number;
 }
@@ -67,6 +78,7 @@ export interface RenderOptions {
   url: string;
   timeoutMs: number;
   screenshot: boolean;
+  proxy?: { server: string };
 }
 
 export interface RenderHistoryItem {

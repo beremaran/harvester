@@ -2,6 +2,12 @@ import type { BrowserContext, Page } from "playwright";
 
 import type { PageRenderer } from "../../application/render-page.js";
 import { assessBlocking } from "../../domain/blocking.js";
+import {
+    describeProxy,
+    proxyKey,
+    type ProxySettings,
+    type ProxySource
+} from "../../domain/proxy.js";
 import type {
     RenderRequest,
     RenderResult
@@ -12,6 +18,7 @@ import {
     profileFingerprint
 } from "../../domain/tls-fingerprint.js";
 import type { BrowserProvider } from "./browser-manager.js";
+import { proxyContextOptions } from "./proxy-options.js";
 import { STEALTH_INIT_SCRIPT } from "./stealth.js";
 import type { TlsFingerprintProvider } from "./tls-fingerprint-probe.js";
 
@@ -20,13 +27,16 @@ export interface RenderContextOptions {
     timezone: string;
     viewport: { width: number; height: number };
     userAgent: string | undefined;
+    /** Default egress; a request may override it per render. */
+    proxy: ProxySettings | undefined;
 }
 
 const DEFAULT_CONTEXT: RenderContextOptions = {
     locale: "en-AU",
     timezone: "Australia/Sydney",
     viewport: { width: 1440, height: 900 },
-    userAgent: undefined
+    userAgent: undefined,
+    proxy: undefined
 };
 
 export class PlaywrightPageRenderer implements PageRenderer {
@@ -47,7 +57,9 @@ export class PlaywrightPageRenderer implements PageRenderer {
 
     async render(request: RenderRequest): Promise<RenderResult> {
         const startedAt = this.now();
-        const context = await this.contextFor(request.url);
+        const source: ProxySource = request.proxy ? "request" : "config";
+        const proxy = request.proxy ?? this.options.proxy;
+        const context = await this.contextFor(request.url, proxy);
         const page = await context.newPage();
 
         try {
@@ -83,7 +95,8 @@ export class PlaywrightPageRenderer implements PageRenderer {
                 tls: await this.tlsFingerprints.fingerprint(
                     requestHeaders["user-agent"] ?? ""
                 ),
-                timeoutMs: request.timeoutMs
+                timeoutMs: request.timeoutMs,
+                ...(proxy ? { proxy: describeProxy(proxy, source) } : {})
             });
 
             return {
@@ -108,6 +121,7 @@ export class PlaywrightPageRenderer implements PageRenderer {
                     responseHeaders,
                     cookieNames: cookies.map((cookie) => cookie.name)
                 }),
+                ...(proxy ? { proxy: describeProxy(proxy, source) } : {}),
                 scraper,
                 durationMs: this.now() - startedAt
             };
@@ -117,13 +131,18 @@ export class PlaywrightPageRenderer implements PageRenderer {
     }
 
     /**
-     * One context per origin, kept alive between renders. A fresh context per
-     * request means an empty cookie jar every time, so consent and region
-     * interstitials re-fire and no session is ever established.
+     * One context per origin and egress, kept alive between renders. A fresh
+     * context per request means an empty cookie jar every time, so consent and
+     * region interstitials re-fire and no session is ever established; keying
+     * on the proxy as well keeps a session pinned to the exit IP that started
+     * it, instead of continuing it from somewhere else.
      */
-    private contextFor(url: string): Promise<BrowserContext> {
-        const origin = new URL(url).origin;
-        let context = this.contexts.get(origin);
+    private contextFor(
+        url: string,
+        proxy: ProxySettings | undefined
+    ): Promise<BrowserContext> {
+        const key = `${new URL(url).origin}|${proxyKey(proxy)}`;
+        let context = this.contexts.get(key);
 
         if (!context) {
             context = this.browsers.getBrowser().then(async (browser) => {
@@ -133,15 +152,16 @@ export class PlaywrightPageRenderer implements PageRenderer {
                     viewport: this.options.viewport,
                     ...(this.options.userAgent
                         ? { userAgent: this.options.userAgent }
-                        : {})
+                        : {}),
+                    ...proxyContextOptions(proxy)
                 });
                 await created.addInitScript(STEALTH_INIT_SCRIPT);
                 return created;
             }).catch((error: unknown) => {
-                this.contexts.delete(origin);
+                this.contexts.delete(key);
                 throw error;
             });
-            this.contexts.set(origin, context);
+            this.contexts.set(key, context);
         }
 
         return context;

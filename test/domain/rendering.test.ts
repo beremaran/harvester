@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { InvalidProxyError } from "../../src/domain/proxy.js";
 import {
     DEFAULT_RENDER_TIMEOUT_MS,
     InvalidRenderTargetError,
@@ -17,8 +18,31 @@ describe("createRenderRequest", () => {
                 url: "https://example.com",
                 timeoutMs: DEFAULT_RENDER_TIMEOUT_MS,
                 screenshot: false,
-                waitForSelector: undefined
+                waitForSelector: undefined,
+                proxy: undefined
             }
+        );
+    });
+
+    it("validates a per-request proxy", () => {
+        assert.deepEqual(
+            createRenderRequest({
+                url: "https://example.com",
+                proxy: { server: "proxy.example:3128" }
+            }).proxy,
+            {
+                server: "http://proxy.example:3128",
+                username: undefined,
+                password: undefined,
+                bypass: undefined
+            }
+        );
+        assert.throws(
+            () => createRenderRequest({
+                url: "https://example.com",
+                proxy: { server: "ftp://proxy.example:21" }
+            }),
+            InvalidProxyError
         );
     });
 

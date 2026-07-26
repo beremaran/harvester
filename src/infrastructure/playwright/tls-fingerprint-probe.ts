@@ -8,7 +8,9 @@ import {
     profileFingerprint,
     type TlsFingerprint
 } from "../../domain/tls-fingerprint.js";
+import type { ProxySettings } from "../../domain/proxy.js";
 import type { BrowserProvider } from "./browser-manager.js";
+import { proxyContextOptions } from "./proxy-options.js";
 
 /**
  * Reads back the TLS/HTTP2 fingerprint of the browser we render with, by
@@ -27,11 +29,15 @@ export interface TlsFingerprintProvider {
 export interface TlsFingerprintProbeOptions {
     probeUrl: string | undefined;
     timeoutMs: number;
+    /** Probe through the render egress, so the endpoint never sees our own
+     * address while renders leave through a proxy. */
+    proxy: ProxySettings | undefined;
 }
 
 const DEFAULT_OPTIONS: TlsFingerprintProbeOptions = {
     probeUrl: DEFAULT_TLS_FINGERPRINT_PROBE_URL,
-    timeoutMs: 15_000
+    timeoutMs: 15_000,
+    proxy: undefined
 };
 
 export class PlaywrightTlsFingerprintProbe implements TlsFingerprintProvider {
@@ -93,7 +99,9 @@ export class PlaywrightTlsFingerprintProbe implements TlsFingerprintProvider {
 
     private contextFor(): Promise<BrowserContext> {
         this.context ??= this.browsers.getBrowser()
-            .then((browser: Browser) => browser.newContext())
+            .then((browser: Browser) => browser.newContext(
+                proxyContextOptions(this.options.proxy)
+            ))
             .catch((error: unknown) => {
                 this.context = undefined;
                 throw error;

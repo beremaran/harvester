@@ -26,7 +26,7 @@ const browsers = new BrowserManager({
 });
 const tlsFingerprints = new PlaywrightTlsFingerprintProbe(
     browsers,
-    { probeUrl: config.tlsProbeUrl },
+    { probeUrl: config.tlsProbeUrl, proxy: config.proxy },
     (error) => console.warn("TLS fingerprint probe failed", error)
 );
 const renderer = new PlaywrightPageRenderer(
@@ -35,7 +35,8 @@ const renderer = new PlaywrightPageRenderer(
         locale: config.locale,
         timezone: config.timezone,
         viewport: config.viewport,
-        userAgent: config.userAgent
+        userAgent: config.userAgent,
+        proxy: config.proxy
     },
     Date.now,
     tlsFingerprints
@@ -43,7 +44,10 @@ const renderer = new PlaywrightPageRenderer(
 const app = await createHttpServer({
     renderPage: new RenderPage(renderer),
     runBotCheck: new RunBotCheck(
-        new PlaywrightBotCheckRunner(browsers, { viewport: config.viewport })
+        new PlaywrightBotCheckRunner(browsers, {
+            viewport: config.viewport,
+            proxy: config.proxy
+        })
     ),
     concurrency: config.renderConcurrency,
     webRoot

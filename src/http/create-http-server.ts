@@ -13,6 +13,7 @@ import {
     BOT_CHECK_IDS,
     isBotCheckId
 } from "../domain/bot-checks.js";
+import { InvalidProxyError } from "../domain/proxy.js";
 import {
     InvalidRenderTargetError,
     MAX_RENDER_TIMEOUT_MS,
@@ -54,7 +55,10 @@ export async function createHttpServer(
                     () => dependencies.renderPage.execute(request.body)
                 );
             } catch (error) {
-                if (error instanceof InvalidRenderTargetError) {
+                if (
+                    error instanceof InvalidRenderTargetError
+                    || error instanceof InvalidProxyError
+                ) {
                     return reply.code(400).send({ error: error.message });
                 }
                 throw error;
@@ -117,6 +121,17 @@ const renderRequestSchema = {
             type: "string",
             minLength: 1,
             maxLength: 256
+        },
+        proxy: {
+            type: "object",
+            additionalProperties: false,
+            required: ["server"],
+            properties: {
+                server: { type: "string", minLength: 1, maxLength: 512 },
+                username: { type: "string", maxLength: 256 },
+                password: { type: "string", maxLength: 256 },
+                bypass: { type: "string", maxLength: 512 }
+            }
         }
     }
 } as const;

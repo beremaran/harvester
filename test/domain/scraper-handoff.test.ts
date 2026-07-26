@@ -144,6 +144,41 @@ describe("scraper handoff", () => {
         assert.ok(handoff.curlImpersonate.includes(`'x-note: it'\\''s fine'`));
         assert.ok(handoff.curlImpersonate.includes("'cookie: session=abc'"));
     });
+
+    it("passes the egress on without its credentials", () => {
+        const handoff = buildScraperHandoff({
+            finalUrl: "https://www.example.com/",
+            requestHeaders,
+            cookies: [],
+            proxy: {
+                server: "http://proxy.example:3128",
+                source: "config",
+                authenticated: true
+            }
+        });
+
+        assert.equal(handoff.proxy?.server, "http://proxy.example:3128");
+        assert.match(handoff.proxy?.note ?? "", /authenticates/);
+        assert.equal(
+            handoff.tlsClient.requestPayload.proxyUrl,
+            "http://proxy.example:3128"
+        );
+        assert.ok(
+            handoff.curlImpersonate.includes("--proxy 'http://proxy.example:3128'")
+        );
+    });
+
+    it("leaves the egress out of a direct render", () => {
+        const handoff = buildScraperHandoff({
+            finalUrl: "https://www.example.com/",
+            requestHeaders,
+            cookies: []
+        });
+
+        assert.equal(handoff.proxy, undefined);
+        assert.equal(handoff.tlsClient.requestPayload.proxyUrl, undefined);
+        assert.ok(!handoff.curlImpersonate.includes("--proxy"));
+    });
 });
 
 describe("cookie header", () => {

@@ -1,4 +1,10 @@
 import type { BlockAssessment } from "./blocking.js";
+import {
+    createProxySettings,
+    type ProxyCommand,
+    type ProxyDescription,
+    type ProxySettings
+} from "./proxy.js";
 import type { ScraperHandoff } from "./scraper-handoff.js";
 
 export const DEFAULT_RENDER_TIMEOUT_MS = 30_000;
@@ -10,6 +16,8 @@ export interface RenderCommand {
     timeoutMs?: number;
     screenshot?: boolean;
     waitForSelector?: string;
+    /** Overrides the configured proxy for this render only. */
+    proxy?: ProxyCommand;
 }
 
 export interface RenderRequest {
@@ -17,6 +25,7 @@ export interface RenderRequest {
     timeoutMs: number;
     screenshot: boolean;
     waitForSelector: string | undefined;
+    proxy: ProxySettings | undefined;
 }
 
 export interface BrowserCookie {
@@ -41,6 +50,8 @@ export interface RenderResult {
     responseHeaders: Record<string, string>;
     cookies: BrowserCookie[];
     blocking: BlockAssessment;
+    /** Egress used for this render; absent when it went out direct. */
+    proxy?: ProxyDescription;
     /** Replay kit for a non-browser HTTP client: headers, cookies, TLS. */
     scraper: ScraperHandoff;
     durationMs: number;
@@ -58,7 +69,8 @@ export function createRenderRequest(command: RenderCommand): RenderRequest {
         url: parseWebUrl(command.url),
         timeoutMs: clampTimeout(command.timeoutMs),
         screenshot: command.screenshot ?? false,
-        waitForSelector: command.waitForSelector || undefined
+        waitForSelector: command.waitForSelector || undefined,
+        proxy: command.proxy ? createProxySettings(command.proxy) : undefined
     };
 }
 
