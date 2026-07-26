@@ -1,6 +1,6 @@
 # The build stage only emits JavaScript, so it runs natively on the builder
 # instead of under emulation. The runtime stage follows the target platform.
-FROM --platform=${BUILDPLATFORM} node:22-bookworm-slim AS build
+FROM --platform=${BUILDPLATFORM} node:26-bookworm-slim AS build
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
@@ -17,7 +17,7 @@ COPY src ./src
 COPY web ./web
 RUN npm run build
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Stamped by the release workflow so /health reports the published tag.
