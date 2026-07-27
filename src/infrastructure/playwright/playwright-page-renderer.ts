@@ -103,7 +103,17 @@ export class PlaywrightPageRenderer implements PageRenderer {
                 finalUrl,
                 requestHeaders,
                 cookies,
-                protocol: (await negotiatedProtocol(page)) || "h2",
+                protocol: (await negotiatedProtocol(page).catch(
+                    (error: unknown) => {
+                        throw new Error(
+                            "render could not read navigation timing, so the "
+                            + "handoff would misreport the negotiated protocol"
+                            + " (page execution world unavailable): "
+                            + String(error),
+                            { cause: error }
+                        );
+                    }
+                )) || "h2",
                 tls: await this.tlsFingerprints.fingerprint(
                     requestHeaders["user-agent"] ?? ""
                 ),
@@ -196,13 +206,25 @@ export class PlaywrightPageRenderer implements PageRenderer {
     }
 }
 
-/** `h2`, `http/1.1`, or `` when the navigation timing is unavailable. */
+/**
+ * `h2`, `http/1.1`, or `` when the navigation timing is unavailable.
+ *
+ * An absent navigation entry is normal and yields ``; a *failed* evaluate is
+ * not, and must not be flattened into the same empty string. rebrowser's
+ * patched `frames._context` builds the isolated world lazily and, when
+ * `Page.addScriptToEvaluateOnNewDocument` fails, logs `cannot get world` and
+ * resolves `undefined` instead of rejecting -- so the evaluate fails in a way
+ * that used to land here and be swallowed. The caller then defaulted the
+ * protocol to `h2`, and the handoff went out asserting a protocol nothing ever
+ * negotiated. Replaying that mismatch is exactly the kind of inconsistency an
+ * edge closes the connection on, so the failure is surfaced instead.
+ */
 async function negotiatedProtocol(page: Page): Promise<string> {
     return page.evaluate(() => {
         const [navigation] = performance.getEntriesByType("navigation");
         return (navigation as PerformanceNavigationTiming | undefined)
             ?.nextHopProtocol ?? "";
-    }).catch(() => "");
+    });
 }
 
 function stripPseudoHeaders(

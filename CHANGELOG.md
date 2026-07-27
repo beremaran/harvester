@@ -10,6 +10,18 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- A render whose page execution world is unavailable now fails instead of
+  quietly guessing the negotiated protocol. rebrowser's patched
+  `frames._context` resolves `undefined` rather than rejecting when
+  `Page.addScriptToEvaluateOnNewDocument` fails (it logs `cannot get world`),
+  so `page.evaluate` failed, the navigation-timing read swallowed it, and the
+  handoff went out asserting `h2` for a navigation that never negotiated it.
+  Replaying that mismatch is the kind of inconsistency an edge answers by
+  closing the connection, which made the resulting session look valid at
+  capture and fail every replay afterwards.
+
 ## [1.5.0] - 2026-07-27
 
 ### Added
