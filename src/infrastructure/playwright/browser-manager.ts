@@ -1,5 +1,9 @@
 import { chromium, type Browser } from "playwright";
 
+import {
+    NO_OP_METRICS,
+    type BrowserMetrics
+} from "../../application/metrics.js";
 import { STEALTH_IGNORED_ARGS, STEALTH_LAUNCH_ARGS } from "./stealth.js";
 
 export interface BrowserProvider {
@@ -25,7 +29,10 @@ export class BrowserManager implements BrowserProvider {
     private browserPromise: Promise<Browser> | undefined;
     private readonly options: BrowserOptions;
 
-    constructor(options: Partial<BrowserOptions> = {}) {
+    constructor(
+        options: Partial<BrowserOptions> = {},
+        private readonly metrics: BrowserMetrics = NO_OP_METRICS
+    ) {
         this.options = { ...DEFAULT_OPTIONS, ...options };
     }
 
@@ -52,7 +59,23 @@ export class BrowserManager implements BrowserProvider {
                 ]
             }).catch((error: unknown) => {
                 this.browserPromise = undefined;
+                this.metrics.browserLaunched("failure");
+                this.metrics.browserUp(false);
                 throw error;
+            }).then((browser) => {
+                this.metrics.browserLaunched("success");
+                this.metrics.browserUp(true);
+                // Chrome dying is otherwise silent: the resolved promise is
+                // cached, so every later render is handed a corpse and fails
+                // somewhere far from the cause. Dropping the promise makes the
+                // next caller relaunch, and the gauge says how often that is
+                // happening.
+                browser.on("disconnected", () => {
+                    this.browserPromise = undefined;
+                    this.metrics.browserUp(false);
+                });
+
+                return browser;
             });
         }
 

@@ -5,8 +5,15 @@ export const BOT_CHECK_IDS = [
     "browserleaks"
 ] as const;
 
+export const BOT_CHECK_STATUSES = [
+    "pass",
+    "fail",
+    "warn",
+    "info"
+] as const;
+
 export type BotCheckId = (typeof BOT_CHECK_IDS)[number];
-export type BotCheckStatus = "pass" | "fail" | "warn" | "info";
+export type BotCheckStatus = (typeof BOT_CHECK_STATUSES)[number];
 
 export interface BotCheckEvaluation {
     name: string;

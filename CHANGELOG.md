@@ -10,6 +10,22 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /metrics`, Prometheus text. `harvester_render_blocking_total{outcome,
+  vendor}` records the bot-defence classification every render already
+  produces, so the posture reading becomes a trend rather than a per-call
+  answer; alongside it are render counts and durations, queue depth, refusals,
+  Chrome's lifecycle, bot-check verdicts and TLS probe failures, plus the
+  standard `process_*` and `nodejs_*` series. The route is open when `API_KEY`
+  is set, like `/health`.
+
+### Fixed
+
+- A crashed Chrome is no longer handed out forever. `BrowserManager` now
+  listens for `disconnected` and drops the cached browser, so the next render
+  relaunches instead of failing somewhere far from the cause.
+
 ## [1.4.0] - 2026-07-26
 
 ### Added

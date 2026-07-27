@@ -166,7 +166,7 @@ Match on JA4 rather than JA3 for that reason.
 | `PROXY_USERNAME` | none | Proxy username, if it authenticates |
 | `PROXY_PASSWORD` | none | Proxy password |
 | `PROXY_BYPASS` | none | Comma-separated hosts to reach directly, e.g. `.internal, localhost` |
-| `API_KEY` | none | When set, every route except `/health` requires `Authorization: Bearer <key>` |
+| `API_KEY` | none | When set, every route except `/health` and `/metrics` requires `Authorization: Bearer <key>` |
 | `ALLOWED_HOSTS` | none | Comma-separated hostnames `/render` may target; empty allows any host |
 
 Locale and timezone matter for region-aware sites: a page served to a browser
@@ -238,13 +238,44 @@ This reads evidence that is already in the response. It does not try to change
 the outcome. Where a request gets stopped is the finding worth recording; use
 it to document blockers rather than to work around them.
 
+## Metrics
+
+`GET /metrics` returns Prometheus text: `harvester_*` series plus the standard
+`process_*` and `nodejs_*` ones. It is open when `API_KEY` is set, like
+`/health` — it carries counters only, never a target URL, a proxy server or a
+token, and the scraper has no business holding the operator's key.
+
+The series worth a dashboard:
+
+| Metric | Meaning |
+| --- | --- |
+| `harvester_render_blocking_total{outcome,vendor}` | Renders by bot-defence outcome and the vendor behind it |
+| `harvester_renders_total{outcome}` | Renders by blocking outcome, plus `invalid_target`, `invalid_proxy`, `error` |
+| `harvester_render_duration_seconds{outcome}` | Time in the service, queue wait included |
+| `harvester_renders_rejected_total{reason}` | Refused before any browser work: `host_not_allowed`, `unauthorized` |
+| `harvester_render_queue_active` / `_pending` / `harvester_render_concurrency_limit` | The render limiter, read when scraped |
+| `harvester_browser_up`, `harvester_browser_launches_total{outcome}` | Chrome's lifecycle, including a crash mid-flight |
+| `harvester_bot_checks_total{check,status}` | Bot-check verdicts; a `fail` on `rebrowser` or `deviceinfo` is the alertable one |
+| `harvester_bot_check_duration_seconds{check}` | How long a completed bot check took |
+| `harvester_tls_fingerprint_probe_total{outcome}` | Probe failures; a success is measured once and reused, so it is not counted per render |
+
+`harvester_render_blocking_total` is the posture reading. Nothing else here
+says which defence tightened, or when.
+
+Labels are kept to bounded sets on purpose. Target URLs, hostnames, proxy
+servers, page titles, cookie names and session identifiers never become
+labels: they are unbounded, remote-controlled, or credential-adjacent.
+
 ## Code layout
 
 The server keeps business rules apart from tools:
 
 - `src/domain` owns render and bot-check terms and rules.
-- `src/application` holds the render and bot-check use cases and their ports.
+- `src/application` holds the render and bot-check use cases and their ports,
+  including the metrics port every other layer records through.
 - `src/infrastructure/playwright` implements those ports with Playwright.
+- `src/infrastructure/metrics` implements the metrics port with prom-client,
+  and is the only place that knows which exporter is in use.
 - `src/http` maps HTTP input and output to the use cases.
 - `src/server.ts` reads config and wires the parts together.
 

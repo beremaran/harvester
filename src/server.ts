@@ -5,6 +5,7 @@ import { RenderPage } from "./application/render-page.js";
 import { RunBotCheck } from "./application/run-bot-check.js";
 import { loadConfig } from "./config.js";
 import { createHttpServer } from "./http/create-http-server.js";
+import { createMetricsRegistry } from "./infrastructure/metrics/registry.js";
 import { BrowserManager } from "./infrastructure/playwright/browser-manager.js";
 import {
     PlaywrightBotCheckRunner
@@ -19,16 +20,23 @@ import {
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(currentDir, "../web-dist");
 const config = loadConfig();
-const browsers = new BrowserManager({
-    channel: config.browserChannel,
-    executablePath: config.browserExecutablePath,
-    headless: config.headless,
-    viewport: config.viewport
-});
+const metrics = createMetricsRegistry();
+const browsers = new BrowserManager(
+    {
+        channel: config.browserChannel,
+        executablePath: config.browserExecutablePath,
+        headless: config.headless,
+        viewport: config.viewport
+    },
+    metrics
+);
 const tlsFingerprints = new PlaywrightTlsFingerprintProbe(
     browsers,
     { probeUrl: config.tlsProbeUrl, proxy: config.proxy },
-    (error) => console.warn("TLS fingerprint probe failed", error)
+    (error) => {
+        metrics.tlsProbeCompleted("failed");
+        console.warn("TLS fingerprint probe failed", error);
+    }
 );
 const renderer = new PlaywrightPageRenderer(
     browsers,
@@ -40,7 +48,8 @@ const renderer = new PlaywrightPageRenderer(
         proxy: config.proxy
     },
     Date.now,
-    tlsFingerprints
+    tlsFingerprints,
+    metrics
 );
 const app = await createHttpServer({
     renderPage: new RenderPage(renderer),
@@ -48,10 +57,12 @@ const app = await createHttpServer({
         new PlaywrightBotCheckRunner(browsers, {
             viewport: config.viewport,
             proxy: config.proxy
-        })
+        }),
+        metrics
     ),
     concurrency: config.renderConcurrency,
     webRoot,
+    metrics,
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),
     allowedHosts: config.allowedHosts
 });

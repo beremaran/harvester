@@ -1,5 +1,9 @@
 import type { BrowserContext, Page } from "playwright";
 
+import {
+    NO_OP_METRICS,
+    type RenderMetrics
+} from "../../application/metrics.js";
 import type { PageRenderer } from "../../application/render-page.js";
 import { assessBlocking } from "../../domain/blocking.js";
 import {
@@ -50,7 +54,8 @@ export class PlaywrightPageRenderer implements PageRenderer {
         private readonly tlsFingerprints: TlsFingerprintProvider = {
             fingerprint: async (userAgent) =>
                 profileFingerprint(chromeMajorVersion(userAgent))
-        }
+        },
+        private readonly metrics: RenderMetrics = NO_OP_METRICS
     ) {
         this.options = { ...DEFAULT_CONTEXT, ...options };
     }
@@ -105,6 +110,18 @@ export class PlaywrightPageRenderer implements PageRenderer {
                 timeoutMs: request.timeoutMs,
                 ...(proxy ? { proxy: describeProxy(proxy, source) } : {})
             });
+            const blocking = assessBlocking({
+                status: response?.status() ?? 0,
+                title,
+                responseHeaders,
+                cookieNames: cookies.map((cookie) => cookie.name)
+            });
+
+            // The assessment is the deliverable of the whole engagement, and
+            // until now it left with the response and was never counted. One
+            // render says a defence was present; the counter says which
+            // defence is tightening, and when.
+            this.metrics.renderClassified(blocking.outcome, blocking.vendor);
 
             return {
                 url: request.url,
@@ -122,12 +139,7 @@ export class PlaywrightPageRenderer implements PageRenderer {
                 requestHeaders,
                 responseHeaders,
                 cookies,
-                blocking: assessBlocking({
-                    status: response?.status() ?? 0,
-                    title,
-                    responseHeaders,
-                    cookieNames: cookies.map((cookie) => cookie.name)
-                }),
+                blocking,
                 ...(proxy ? { proxy: describeProxy(proxy, source) } : {}),
                 scraper,
                 durationMs: this.now() - startedAt

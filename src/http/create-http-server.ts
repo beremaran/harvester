@@ -3,6 +3,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { existsSync } from "node:fs";
 import pLimit from "p-limit";
 
+import {
+    NO_OP_METRICS,
+    type RenderOutcome,
+    type ServerMetrics
+} from "../application/metrics.js";
 import type {
     RenderPageUseCase
 } from "../application/render-page.js";
@@ -28,11 +33,24 @@ export interface HttpServerDependencies {
     concurrency: number;
     webRoot?: string;
     logger?: boolean;
-    /** When set, every route except /health requires this bearer token. */
+    /**
+     * When set, every route except the ones in OPEN_ROUTES requires this
+     * bearer token.
+     */
     apiKey?: string;
     /** When non-empty, /render targets are limited to these hostnames. */
     allowedHosts?: string[];
+    /** Sink for the counters /metrics publishes; no-ops when omitted. */
+    metrics?: ServerMetrics;
 }
+
+/**
+ * Routes a caller reaches without the key. Both carry aggregate state only --
+ * no target URLs, no proxy servers, no credentials -- and both are polled by
+ * infrastructure (the container healthcheck, Prometheus) that has no business
+ * holding the operator's token.
+ */
+const OPEN_ROUTES = new Set(["/health", "/metrics"]);
 
 export async function createHttpServer(
     dependencies: HttpServerDependencies
@@ -43,14 +61,18 @@ export async function createHttpServer(
     });
     const schedule = pLimit(dependencies.concurrency);
     const allowedHosts = new Set(dependencies.allowedHosts ?? []);
+    const metrics = dependencies.metrics ?? NO_OP_METRICS;
+
+    metrics.trackRenderQueue(schedule);
 
     if (dependencies.apiKey) {
         const expected = `Bearer ${dependencies.apiKey}`;
         app.addHook("onRequest", async (request, reply) => {
-            if (request.url === "/health") {
+            if (OPEN_ROUTES.has(pathOf(request.url))) {
                 return;
             }
             if (request.headers.authorization !== expected) {
+                metrics.renderRejected("unauthorized");
                 return reply.code(401).send({ error: "unauthorized" });
             }
         });
@@ -63,6 +85,15 @@ export async function createHttpServer(
         pending: schedule.pendingCount
     }));
 
+    // Registered explicitly rather than left to chance: the SPA fallback below
+    // answers any unmatched GET with index.html and a 200, so a missing route
+    // here would hand a scraper a page of HTML it would happily fail to parse
+    // forever.
+    app.get("/metrics", async (_request, reply) => {
+        reply.header("content-type", metrics.contentType);
+        return metrics.scrape();
+    });
+
     app.post<{ Body: RenderCommand }>(
         "/render",
         { schema: { body: renderRequestSchema } },
@@ -71,15 +102,28 @@ export async function createHttpServer(
                 allowedHosts.size > 0
                 && !allowedHosts.has(hostnameOf(request.body.url))
             ) {
+                metrics.renderRejected("host_not_allowed");
                 return reply.code(403).send({
                     error: "render target host is not allowed"
                 });
             }
+
+            const startedAt = process.hrtime.bigint();
             try {
-                return await schedule(
+                const result = await schedule(
                     () => dependencies.renderPage.execute(request.body)
                 );
+
+                metrics.renderCompleted(
+                    result.blocking.outcome,
+                    secondsSince(startedAt)
+                );
+                return result;
             } catch (error) {
+                metrics.renderCompleted(
+                    outcomeOf(error),
+                    secondsSince(startedAt)
+                );
                 if (
                     error instanceof InvalidRenderTargetError
                     || error instanceof InvalidProxyError
@@ -173,6 +217,35 @@ function hostnameOf(url: string): string {
     } catch {
         return "";
     }
+}
+
+/**
+ * `request.url` is the raw target and still carries the query string, which a
+ * Prometheus scrape_config is free to append; comparing it whole would put
+ * /metrics?foo=1 behind the key.
+ */
+function pathOf(url: string): string {
+    const query = url.indexOf("?");
+    return query === -1 ? url : url.slice(0, query);
+}
+
+function secondsSince(startedAt: bigint): number {
+    return Number(process.hrtime.bigint() - startedAt) / 1e9;
+}
+
+/**
+ * Derived from the error's type, never its message: proxy messages can carry
+ * caller input and would turn a label into an unbounded set.
+ */
+function outcomeOf(error: unknown): RenderOutcome {
+    if (error instanceof InvalidRenderTargetError) {
+        return "invalid_target";
+    }
+    if (error instanceof InvalidProxyError) {
+        return "invalid_proxy";
+    }
+
+    return "error";
 }
 
 const botCheckParamsSchema = {
