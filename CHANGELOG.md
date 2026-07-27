@@ -10,6 +10,8 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-27
+
 ### Added
 
 - `GET /metrics`, Prometheus text. `harvester_render_blocking_total{outcome,
@@ -103,7 +105,8 @@ into a new version heading, so keep adding entries there as you merge changes.
 - Initial public release of the `renderer-worker` render service and its
   Vite/React playground.
 
-[unreleased]: https://github.com/beremaran/harvester/compare/v1.4.0...HEAD
+[unreleased]: https://github.com/beremaran/harvester/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/beremaran/harvester/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/beremaran/harvester/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/beremaran/harvester/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/beremaran/harvester/compare/v1.1.1...v1.2.0
