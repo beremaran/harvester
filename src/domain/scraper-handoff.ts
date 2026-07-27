@@ -19,6 +19,15 @@ import {
  * protocol error (`host`, `content-length` for the wrong body) or a silent
  * mismatch (`cookie` drifting from the jar, `accept-encoding` promising a
  * codec the client cannot decode).
+ *
+ * The conditional headers are here for a subtler reason. Contexts are cached
+ * per origin, so they keep an HTTP cache: the *second* render of an origin is
+ * a revalidation and Chrome attaches `if-none-match`. A replay is a fresh
+ * request, not a revalidation, so inheriting that validator either draws a
+ * bodiless 304 or -- for a consumer that allowlists replay headers -- rejects
+ * the whole capture. Either way the first capture of an origin succeeds and
+ * every later one fails, which reads as intermittent rather than as cache
+ * state.
  */
 const CLIENT_OWNED_HEADERS: Record<string, string> = {
     host: "set by the client from the request URL",
@@ -28,7 +37,12 @@ const CLIENT_OWNED_HEADERS: Record<string, string> = {
     "keep-alive": "connection-scoped, illegal over HTTP/2",
     "transfer-encoding": "connection-scoped, illegal over HTTP/2",
     cookie: "send `cookieHeader`, or let a cookie jar manage it",
-    "accept-encoding": "must match the codecs the client can actually decode"
+    "accept-encoding": "must match the codecs the client can actually decode",
+    "if-none-match": "cache validator from our context, not the replay's",
+    "if-modified-since": "cache validator from our context, not the replay's",
+    "if-match": "cache validator from our context, not the replay's",
+    "if-unmodified-since": "cache validator from our context, not the replay's",
+    "if-range": "cache validator from our context, not the replay's"
 };
 
 /**

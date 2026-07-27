@@ -10,6 +10,17 @@ into a new version heading, so keep adding entries there as you merge changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- The scraper handoff no longer carries cache validators (`if-none-match`,
+  `if-modified-since`, `if-match`, `if-unmodified-since`, `if-range`). Contexts
+  are cached per origin and keep an HTTP cache, so the second render of an
+  origin is a revalidation and Chrome attaches `if-none-match`; a replay is a
+  fresh request, not a revalidation, so inheriting the validator draws a
+  bodiless 304 or -- for a consumer that allowlists replay headers -- rejects
+  the capture outright. The first capture of an origin succeeded and every
+  later one failed, which read as intermittent rather than as cache state.
+
 ## [1.5.1] - 2026-07-27
 
 ### Fixed

@@ -52,6 +52,30 @@ describe("scraper handoff", () => {
         assert.equal(handoff.origin, "https://www.example.com");
     });
 
+    it("drops cache validators a re-render picked up", () => {
+        // A cached context revalidates on its second render of an origin, so
+        // Chrome attaches if-none-match. Replaying it asks for a bodiless 304
+        // and, where the consumer allowlists replay headers, invalidates the
+        // whole capture -- so the first capture of an origin works and every
+        // later one fails.
+        const handoff = buildScraperHandoff({
+            finalUrl: "https://www.example.com/",
+            requestHeaders: {
+                ...requestHeaders,
+                "if-none-match": 'W/"abc123"',
+                "if-modified-since": "Wed, 21 Oct 2026 07:28:00 GMT"
+            },
+            cookies: []
+        });
+
+        assert.equal(handoff.headers["if-none-match"], undefined);
+        assert.equal(handoff.headers["if-modified-since"], undefined);
+        assert.ok(handoff.clientOwnedHeaders["if-none-match"]);
+        assert.ok(handoff.clientOwnedHeaders["if-modified-since"]);
+        // The headers that make the replay look like Chrome must survive.
+        assert.equal(handoff.headers["user-agent"], CHROME_UA);
+    });
+
     it("emits Chrome's header order, not the alphabetised one", () => {
         const handoff = buildScraperHandoff({
             finalUrl: "https://www.example.com/",
